@@ -6,7 +6,7 @@
     <title>Swaraj Grocery - Online Store Orders</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-100 font-sans p-4 md:p-6">
+<body class="bg-slate-100 font-sans p-4 md:p-6 text-slate-900">
     <!-- Admin Navigation Header -->
     <div class="bg-slate-900 text-white p-4 shadow-xl mb-6 rounded-2xl border border-slate-800">
         <div class="flex flex-col md:flex-row justify-between items-center pb-3 mb-3 border-b border-slate-800 gap-2">
@@ -108,7 +108,6 @@
             }
         }
 
-        // Unlock audio on first user click or key press anywhere on the page
         document.addEventListener('click', () => {
             if (!soundEnabled) {
                 initAudioContext();
@@ -167,61 +166,119 @@
 
     <!-- Main Content Container -->
     <div class="max-w-7xl mx-auto bg-white p-6 rounded-2xl shadow-md border border-slate-200 space-y-8">
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-4 gap-3">
+        <!-- Page Header & Controls -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-200 pb-5 gap-4">
             <div>
-                <h1 class="text-xl font-bold text-slate-900">🌐 Online Store Orders Management</h1>
-                <p class="text-xs text-slate-500 mt-0.5">View, pack, and track all customer orders and delivery addresses placed via the online storefront.</p>
+                <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">🌐 Online Store Orders Management</h1>
+                <p class="text-xs text-slate-500 mt-1">Structured fulfillment view for online orders, customer contact details, delivery addresses, and invoices.</p>
             </div>
-            <button id="sound-toggle-btn" type="button" onclick="playBeep()" class="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs transition">
-                🔇 Enable Alert Sound
-            </button>
+            <div class="flex items-center gap-2.5">
+                <button type="button" onclick="window.location.reload()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-3.5 py-2 rounded-xl text-xs font-bold transition">
+                    🔄 Refresh
+                </button>
+                <button id="sound-toggle-btn" type="button" onclick="playBeep()" class="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 px-3.5 py-2 rounded-xl text-xs font-bold shadow-xs transition">
+                    🔇 Enable Alert Sound
+                </button>
+            </div>
         </div>
 
-        <!-- Unpacked / Regular Orders Section -->
-        <div>
-            <h3 class="text-sm font-bold text-amber-700 mb-3 flex items-center gap-1.5">
-                🔔 Active / Unpacked Orders (Regular)
-            </h3>
+        <!-- Summary KPI Cards -->
+        {% set unpacked_sum = unpacked_orders | sum(attribute='total_amount') %}
+        {% set packed_sum = packed_orders | sum(attribute='total_amount') %}
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-4">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-amber-800 block">Unpacked Queue</span>
+                <div class="flex items-baseline justify-between mt-1">
+                    <span class="text-2xl font-black text-amber-900">{{ unpacked_orders|length }}</span>
+                    <span class="text-xs font-bold text-amber-700">₹{{ "%.2f"|format(unpacked_sum) }}</span>
+                </div>
+            </div>
+            <div class="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-800 block">Packed & Ready</span>
+                <div class="flex items-baseline justify-between mt-1">
+                    <span class="text-2xl font-black text-emerald-900">{{ packed_orders|length }}</span>
+                    <span class="text-xs font-bold text-emerald-700">₹{{ "%.2f"|format(packed_sum) }}</span>
+                </div>
+            </div>
+            <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Total Online Volume</span>
+                <div class="flex items-baseline justify-between mt-1">
+                    <span class="text-2xl font-black text-slate-900">{{ (unpacked_orders|length) + (packed_orders|length) }}</span>
+                    <span class="text-xs font-bold text-slate-800">₹{{ "%.2f"|format(unpacked_sum + packed_sum) }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Unpacked / Active Orders Section -->
+        <div class="border border-amber-200/80 rounded-2xl overflow-hidden">
+            <div class="bg-amber-50 px-4 py-3 border-b border-amber-200 flex items-center justify-between">
+                <h3 class="text-xs font-extrabold uppercase tracking-wider text-amber-900 flex items-center gap-2">
+                    <span>🔔 Active / Unpacked Orders</span>
+                    <span class="bg-amber-600 text-white px-2 py-0.5 rounded-full text-[10px]">{{ unpacked_orders|length }}</span>
+                </h3>
+                <span class="text-[11px] text-amber-800 font-medium">Awaiting packing</span>
+            </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs border-collapse">
                     <thead>
-                        <tr class="bg-amber-50 text-slate-700 border-b border-amber-200">
-                            <th class="p-3">Order ID</th>
-                            <th class="p-3">Timestamp</th>
-                            <th class="p-3">Customer Name</th>
-                            <th class="p-3">Phone</th>
-                            <th class="p-3">📍 Delivery Address</th>
-                            <th class="p-3">Items Summary</th>
-                            <th class="p-3 text-right">Total Amount</th>
-                            <th class="p-3 text-center">Payment</th>
-                            <th class="p-3 text-center">Action</th>
+                        <tr class="bg-white text-slate-500 border-b border-slate-200 text-[11px] uppercase tracking-wider">
+                            <th class="py-3 px-4 font-bold">Order</th>
+                            <th class="py-3 px-4 font-bold">Date & Time</th>
+                            <th class="py-3 px-4 font-bold">Customer</th>
+                            <th class="py-3 px-4 font-bold">📍 Delivery Address</th>
+                            <th class="py-3 px-4 font-bold">Items</th>
+                            <th class="py-3 px-4 font-bold text-right">Amount</th>
+                            <th class="py-3 px-4 font-bold text-center">Payment</th>
+                            <th class="py-3 px-4 font-bold text-center">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100">
+                    <tbody class="divide-y divide-slate-100 bg-white">
                         {% for order in unpacked_orders %}
-                        <tr class="hover:bg-amber-50/40 transition">
-                            <td class="p-3 font-mono font-bold text-slate-800">#{{ order.id }}</td>
-                            <td class="p-3 text-slate-500 whitespace-nowrap">{{ order.timestamp }}</td>
-                            <td class="p-3 font-semibold text-slate-900">{{ order.customer_name }}</td>
-                            <td class="p-3 font-mono text-slate-600">{{ order.customer_phone }}</td>
-                            <td class="p-3 text-slate-700 max-w-xs">
-                                <span class="bg-slate-100 text-slate-800 px-2 py-1 rounded-md font-medium inline-block">{{ order.delivery_address }}</span>
+                        <tr class="hover:bg-amber-50/30 transition align-top">
+                            <td class="py-3.5 px-4 font-mono font-extrabold text-slate-900 whitespace-nowrap">
+                                #{{ order.id }}
                             </td>
-                            <td class="p-3 text-slate-700 max-w-xs truncate">{{ order.items_summary }}</td>
-                            <td class="p-3 text-right font-bold text-emerald-600">₹{{ "%.2f"|format(order.total_amount) }}</td>
-                            <td class="p-3 text-center font-semibold text-slate-700">{{ order.payment_mode }}</td>
-                            <td class="p-3 text-center flex items-center justify-center gap-2">
-                                <a href="/pack_order/{{ order.id }}" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg font-bold shadow transition flex items-center gap-1 whitespace-nowrap">
-                                    📦 Mark Packed
-                                </a>
-                                <a href="/customer_receipt/{{ order.id }}" target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold shadow transition whitespace-nowrap">
-                                    🖨️ Invoice
-                                </a>
+                            <td class="py-3.5 px-4 text-slate-500 font-mono text-[11px] whitespace-nowrap">
+                                {{ order.timestamp }}
+                            </td>
+                            <td class="py-3.5 px-4 whitespace-nowrap">
+                                <div class="font-bold text-slate-900">{{ order.customer_name }}</div>
+                                <div class="font-mono text-[11px] text-slate-500 mt-0.5">{{ order.customer_phone }}</div>
+                            </td>
+                            <td class="py-3.5 px-4 text-slate-700 min-w-[200px] max-w-xs">
+                                <div class="bg-slate-50 border border-slate-200 text-slate-800 px-2.5 py-1.5 rounded-xl font-medium leading-snug">
+                                    {{ order.delivery_address }}
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 text-slate-700 min-w-[180px] max-w-sm">
+                                <div class="font-medium text-slate-800 leading-relaxed">
+                                    {{ order.items_summary }}
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 text-right font-black text-emerald-700 whitespace-nowrap text-sm">
+                                ₹{{ "%.2f"|format(order.total_amount) }}
+                            </td>
+                            <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                <span class="inline-block bg-slate-100 border border-slate-200 text-slate-800 px-2.5 py-1 rounded-lg font-bold text-[11px]">
+                                    {{ order.payment_mode }}
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                <div class="inline-flex items-center gap-1.5">
+                                    <a href="/pack_order/{{ order.id }}" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-xl font-bold shadow-xs transition">
+                                        📦 Mark Packed
+                                    </a>
+                                    <a href="/customer_receipt/{{ order.id }}" target="_blank" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl font-bold shadow-xs transition">
+                                        🖨️ Invoice
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="9" class="text-center py-6 text-slate-400 text-xs">No pending unpacked online orders. All caught up! 🎉</td>
+                            <td colspan="8" class="text-center py-8 text-slate-400 text-xs font-medium">
+                                No pending unpacked online orders. All caught up! 🎉
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -230,45 +287,75 @@
         </div>
 
         <!-- Packed Orders Section -->
-        <div>
-            <h3 class="text-sm font-bold text-emerald-700 mb-3 flex items-center gap-1.5">
-                ✅ Packed Orders Section
-            </h3>
+        <div class="border border-emerald-200/80 rounded-2xl overflow-hidden">
+            <div class="bg-emerald-50 px-4 py-3 border-b border-emerald-200 flex items-center justify-between">
+                <h3 class="text-xs font-extrabold uppercase tracking-wider text-emerald-900 flex items-center gap-2">
+                    <span>✅ Packed Orders</span>
+                    <span class="bg-emerald-600 text-white px-2 py-0.5 rounded-full text-[10px]">{{ packed_orders|length }}</span>
+                </h3>
+                <span class="text-[11px] text-emerald-800 font-medium">Completed packing history</span>
+            </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs border-collapse">
                     <thead>
-                        <tr class="bg-emerald-50 text-slate-700 border-b border-emerald-200">
-                            <th class="p-3">Order ID</th>
-                            <th class="p-3">Timestamp</th>
-                            <th class="p-3">Customer Name</th>
-                            <th class="p-3">Phone</th>
-                            <th class="p-3">📍 Delivery Address</th>
-                            <th class="p-3">Items Summary</th>
-                            <th class="p-3 text-right">Total Amount</th>
-                            <th class="p-3 text-center">Payment</th>
-                            <th class="p-3 text-center">Status</th>
+                        <tr class="bg-white text-slate-500 border-b border-slate-200 text-[11px] uppercase tracking-wider">
+                            <th class="py-3 px-4 font-bold">Order</th>
+                            <th class="py-3 px-4 font-bold">Date & Time</th>
+                            <th class="py-3 px-4 font-bold">Customer</th>
+                            <th class="py-3 px-4 font-bold">📍 Delivery Address</th>
+                            <th class="py-3 px-4 font-bold">Items</th>
+                            <th class="py-3 px-4 font-bold text-right">Amount</th>
+                            <th class="py-3 px-4 font-bold text-center">Payment</th>
+                            <th class="py-3 px-4 font-bold text-center">Status</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100">
+                    <tbody class="divide-y divide-slate-100 bg-white">
                         {% for order in packed_orders %}
-                        <tr class="hover:bg-emerald-50/40 transition bg-emerald-50/20">
-                            <td class="p-3 font-mono font-bold text-slate-800">#{{ order.id }}</td>
-                            <td class="p-3 text-slate-500 whitespace-nowrap">{{ order.timestamp }}</td>
-                            <td class="p-3 font-semibold text-slate-900">{{ order.customer_name }}</td>
-                            <td class="p-3 font-mono text-slate-600">{{ order.customer_phone }}</td>
-                            <td class="p-3 text-slate-700 max-w-xs">
-                                <span class="bg-emerald-50 text-emerald-900 border border-emerald-200 px-2 py-1 rounded-md font-medium inline-block">{{ order.delivery_address }}</span>
+                        <tr class="hover:bg-emerald-50/30 transition align-top">
+                            <td class="py-3.5 px-4 font-mono font-extrabold text-slate-900 whitespace-nowrap">
+                                #{{ order.id }}
                             </td>
-                            <td class="p-3 text-slate-700 max-w-xs truncate">{{ order.items_summary }}</td>
-                            <td class="p-3 text-right font-bold text-emerald-600">₹{{ "%.2f"|format(order.total_amount) }}</td>
-                            <td class="p-3 text-center font-semibold text-slate-700">{{ order.payment_mode }}</td>
-                            <td class="p-3 text-center">
-                                <span class="bg-emerald-600 text-white px-2.5 py-1 rounded-full font-bold text-[10px] shadow-sm whitespace-nowrap">Packed & Ready</span>
+                            <td class="py-3.5 px-4 text-slate-500 font-mono text-[11px] whitespace-nowrap">
+                                {{ order.timestamp }}
+                            </td>
+                            <td class="py-3.5 px-4 whitespace-nowrap">
+                                <div class="font-bold text-slate-900">{{ order.customer_name }}</div>
+                                <div class="font-mono text-[11px] text-slate-500 mt-0.5">{{ order.customer_phone }}</div>
+                            </td>
+                            <td class="py-3.5 px-4 text-slate-700 min-w-[200px] max-w-xs">
+                                <div class="bg-emerald-50/60 border border-emerald-200/80 text-slate-800 px-2.5 py-1.5 rounded-xl font-medium leading-snug">
+                                    {{ order.delivery_address }}
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 text-slate-700 min-w-[180px] max-w-sm">
+                                <div class="font-medium text-slate-800 leading-relaxed">
+                                    {{ order.items_summary }}
+                                </div>
+                            </td>
+                            <td class="py-3.5 px-4 text-right font-black text-emerald-700 whitespace-nowrap text-sm">
+                                ₹{{ "%.2f"|format(order.total_amount) }}
+                            </td>
+                            <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                <span class="inline-block bg-slate-100 border border-slate-200 text-slate-800 px-2.5 py-1 rounded-lg font-bold text-[11px]">
+                                    {{ order.payment_mode }}
+                                </span>
+                            </td>
+                            <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                <div class="inline-flex items-center gap-1.5">
+                                    <span class="bg-emerald-600 text-white px-2.5 py-1 rounded-full font-bold text-[10px] shadow-xs">
+                                        Packed & Ready
+                                    </span>
+                                    <a href="/customer_receipt/{{ order.id }}" target="_blank" class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-2.5 py-1 rounded-xl font-bold text-[11px] transition">
+                                        🖨️ Invoice
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="9" class="text-center py-6 text-slate-400 text-xs">No packed orders in history yet.</td>
+                            <td colspan="8" class="text-center py-8 text-slate-400 text-xs font-medium">
+                                No packed orders in history yet.
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
