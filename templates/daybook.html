@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Day Book & Sales Report - Swaraj Grocery</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 font-sans p-4 md:p-6">
+    {{ admin_navbar | safe }}
+    <div class="max-w-6xl mx-auto bg-white p-4 md:p-6 rounded-2xl shadow-md border border-slate-200">
+        <h1 class="text-xl font-bold text-purple-700 mb-4">📊 Counter Day Book & Financial Audit</h1>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <div class="bg-green-50 p-3.5 rounded-xl border border-green-200">
+                <p class="text-[10px] text-green-600 font-bold">TOTAL REVENUE</p>
+                <p class="text-lg font-bold text-green-800">₹{{ "%.2f"|format(total_revenue) }}</p>
+            </div>
+            <div class="bg-blue-50 p-3.5 rounded-xl border border-blue-200">
+                <p class="text-[10px] text-blue-600 font-bold">💵 CASH SALES</p>
+                <p class="text-lg font-bold text-blue-800">₹{{ "%.2f"|format(totals_by_mode.get('Cash', 0.0)) }}</p>
+            </div>
+            <div class="bg-indigo-50 p-3.5 rounded-xl border border-indigo-200">
+                <p class="text-[10px] text-indigo-600 font-bold">📱 UPI SALES</p>
+                <p class="text-lg font-bold text-indigo-800">₹{{ "%.2f"|format(totals_by_mode.get('UPI', 0.0) + totals_by_mode.get('Online UPI', 0.0)) }}</p>
+            </div>
+            <div class="bg-rose-50 p-3.5 rounded-xl border border-rose-200">
+                <p class="text-[10px] text-rose-600 font-bold">💸 TOTAL EXPENSES</p>
+                <p class="text-lg font-bold text-rose-800">₹{{ "%.2f"|format(total_expenses) }}</p>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse border border-slate-200 text-xs">
+                <thead>
+                    <tr class="bg-slate-200 text-left">
+                        <th class="p-2.5 border">Bill ID</th>
+                        <th class="p-2.5 border">Customer</th>
+                        <th class="p-2.5 border">Mode</th>
+                        <th class="p-2.5 border">Status</th>
+                        <th class="p-2.5 border">Amount</th>
+                        <th class="p-2.5 border">Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for b in bills %}
+                    <tr>
+                        <td class="p-2.5 border font-semibold">#{{ b[0] }}</td>
+                        <td class="p-2.5 border">{{ b[1] }}</td>
+                        <td class="p-2.5 border font-bold">{{ b[4] }}</td>
+                        <td class="p-2.5 border"><span class="px-2 py-0.5 rounded font-bold {% if b[5] == 'Paid' %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}">{{ b[5] }}</span></td>
+                        <td class="p-2.5 border font-bold">₹{{ "%.2f"|format(b[3]) }}</td>
+                        <td class="p-2.5 border text-slate-500">{{ b[6] }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="p-4 text-center text-slate-400">No bills generated yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

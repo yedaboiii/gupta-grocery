@@ -1,0 +1,531 @@
+from flask import Blueprint, render_template, request, redirect, url_for, flash, Response, session
+import sqlite3
+from datetime import datetime
+import json
+from database import db
+from firebase_admin import firestore
+
+admin_bp = Blueprint("admin", __name__)
+
+def admin_required(f):
+    from functools import wraps
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("is_admin"):
+            return redirect(url_for("admin.admin_login"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def _ensure_order_columns(cursor, conn):
+    for col_sql in [
+        "ALTER TABLE bills ADD COLUMN order_status TEXT DEFAULT 'Unpacked'",
+        "ALTER TABLE bills ADD COLUMN delivery_address TEXT DEFAULT ''",
+        "ALTER TABLE bills ADD COLUMN order_source TEXT DEFAULT 'POS'"
+    ]:
+        try:
+            cursor.execute(col_sql)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
+@admin_bp.route("/admin_login", methods=["GET", "POST"])
+def admin_login():
+    if request.method == "POST":
+        passcode = request.form.get("passcode")
+        if passcode == "teddewar":
+            session["is_admin"] = True
+            return redirect(url_for("pos.pos_terminal"))
+        else:
+            flash("❌ Incorrect Admin Passcode!")
+    return render_template("admin_login.html")
+
+@admin_bp.route("/admin_logout")
+def admin_logout():
+    session.pop("is_admin", None)
+    flash("Logged out of Admin ERP successfully.")
+    return redirect(url_for("customer.customer_shop"))
+
+@admin_bp.route("/api/unread_orders_count")
+@admin_required
+def unread_orders_count():
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    _ensure_order_columns(cursor, conn)
+    cursor.execute("""
+        SELECT COUNT(*) FROM bills
+        WHERE (order_status = 'Unpacked' OR order_status IS NULL)
+          AND order_source = 'Online'
+          AND NOT (customer_name = 'Walking Customer' AND (delivery_address IS NULL OR TRIM(delivery_address) = ''))
+    """)
+    count = cursor.fetchone()[0] or 0
+    conn.close()
+    return {"count": count}
+
+@admin_bp.route("/online_orders")
+@admin_required
+def online_orders():
+    conn = sqlite3.connect("store_pos.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    _ensure_order_columns(cursor, conn)
+
+    cursor.execute("""
+        SELECT * FROM bills
+        WHERE order_source = 'Online'
+          AND NOT (customer_name = 'Walking Customer' AND (delivery_address IS NULL OR TRIM(delivery_address) = ''))
+        ORDER BY id DESC
+    """)
+    raw_orders = cursor.fetchall()
+    conn.close()
+
+    unpacked_orders = []
+    packed_orders = []
+
+    for r in raw_orders:
+        try:
+            tot = float(r["total_amount"]) if r["total_amount"] is not None else 0.0
+        except (ValueError, TypeError):
+            tot = 0.0
+
+        addr = ""
+        if "delivery_address" in r.keys() and r["delivery_address"]:
+            addr = str(r["delivery_address"]).strip()
+            
+        order = {
+            "id": r["id"],
+            "customer_name": r["customer_name"] or "Online Customer",
+            "customer_phone": r["customer_phone"] or "N/A",
+            "delivery_address": addr or "Not Specified",
+            "items_summary": r["items_summary"] or "",
+            "total_amount": tot,
+            "payment_mode": r["payment_mode"] or "Cash",
+            "timestamp": r["timestamp"] or "",
+            "order_status": r["order_status"] or "Unpacked"
+        }
+        
+        if order["order_status"] == "Packed":
+            packed_orders.append(order)
+        else:
+            unpacked_orders.append(order)
+
+    return render_template("online_orders.html", unpacked_orders=unpacked_orders, packed_orders=packed_orders, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+
+@admin_bp.route("/pack_order/<int:order_id>")
+@admin_required
+def pack_order(order_id):
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE bills SET order_status = 'Packed' WHERE id = ?", (order_id,))
+    conn.commit()
+    conn.close()
+    flash(f"Order #{order_id} marked as Packed successfully!")
+    return redirect(url_for("admin.online_orders"))
+
+@admin_bp.route("/inventory", methods=["GET", "POST"])
+@admin_required
+def inventory():
+    try:
+        conn = sqlite3.connect("store_pos.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        action = request.form.get("action")
+        
+        if request.method == "POST":
+            if action == "update":
+                prod_id = request.form.get("prod_id")
+                name = request.form.get("name")
+                price = float(request.form.get("price") or 0.0)
+                stock = int(request.form.get("stock") or 0)
+                category = request.form.get("category", "Essentials")
+                
+                cursor.execute("""
+                    UPDATE products SET name = ?, price = ?, stock = ?, category = ?
+                    WHERE id = ?
+                """, (name, price, stock, category, prod_id))
+                conn.commit()
+                conn.close()
+                flash(f"Product '{name}' updated successfully!")
+                return redirect(url_for("admin.inventory"))
+                
+            elif action == "delete":
+                prod_id = request.form.get("prod_id")
+                cursor.execute("DELETE FROM products WHERE id = ?", (prod_id,))
+                conn.commit()
+                conn.close()
+                flash("Product deleted successfully!")
+                return redirect(url_for("admin.inventory"))
+                
+            else:
+                barcode = request.form.get("barcode")
+                name = request.form.get("name")
+                price = float(request.form.get("price") or 0.0)
+                stock = int(request.form.get("stock") or 0)
+                gst = float(request.form.get("gst_rate", 5.0) or 5.0)
+                batch_no = request.form.get("batch_no", "GENERAL")
+                expiry_date = request.form.get("expiry_date", "2027-12-31")
+                rack_location = request.form.get("rack_location", "Rack-1 Shelf A")
+                category = request.form.get("category", "Essentials")
+                
+                cursor.execute("SELECT id FROM products WHERE barcode = ?", (barcode,))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    existing_id = existing["id"]
+                    cursor.execute("""
+                        UPDATE products 
+                        SET stock = stock + ?, name = ?, price = ?, category = ?, batch_no = ?, expiry_date = ?, rack_location = ?
+                        WHERE id = ?
+                    """, (stock, name, price, category, batch_no, expiry_date, rack_location, existing_id))
+                    conn.commit()
+                    flash(f"Product '{name}' restocked! Added +{stock} to previous stock.")
+                else:
+                    cursor.execute("""
+                        INSERT INTO products (barcode, name, price, stock, gst_rate, batch_no, expiry_date, rack_location, category)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (barcode, name, price, stock, gst, batch_no, expiry_date, rack_location, category))
+                    conn.commit()
+                    flash("New product added to inventory successfully!")
+                
+                conn.close()
+                return redirect(url_for("admin.inventory"))
+                
+        cursor.execute("SELECT * FROM products")
+        products = cursor.fetchall()
+        conn.close()
+        return render_template("inventory.html", products=products, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+        
+    except Exception as e:
+        return f"<h3 style='color:red; padding: 20px;'>Inventory Error: {str(e)}</h3><p style='padding: 0 20px;'><a href='/inventory'>&larr; Return to Inventory</a></p>", 500
+
+@admin_bp.route("/product_images", methods=["GET", "POST"])
+@admin_required
+def product_images():
+    try:
+        conn = sqlite3.connect("store_pos.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        if request.method == "POST":
+            prod_id = request.form.get("prod_id")
+            image_url = request.form.get("image_url", "").strip()
+            
+            cursor.execute("UPDATE products SET image_url = ? WHERE id = ?", (image_url, prod_id))
+            conn.commit()
+            flash("Product image updated successfully for online store!")
+            conn.close()
+            return redirect(url_for("admin.product_images"))
+            
+        cursor.execute("SELECT id, barcode, name, category, image_url FROM products")
+        products = cursor.fetchall()
+        conn.close()
+        
+        return render_template("product_images.html", products=products, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+        
+    except Exception as e:
+        return f"<h3 style='color:red;'>Error: {str(e)}</h3><p><a href='/inventory'>Return</a></p>", 500
+
+@admin_bp.route("/khata_limits", methods=["GET", "POST"])
+@admin_required
+def khata_limits():
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    if request.method == "POST":
+        name = request.form.get("name")
+        phone = request.form.get("phone")
+        limit = float(request.form.get("credit_limit", 2000.0))
+        cursor.execute("""
+            INSERT INTO customers (name, phone, credit_limit) VALUES (?, ?, ?)
+            ON CONFLICT(phone) DO UPDATE SET name=?, credit_limit=?
+        """, (name, phone, limit, name, limit))
+        conn.commit()
+        flash(f"Credit limit set for {name} (₹{limit})!")
+    cursor.execute("SELECT * FROM customers")
+    customers = cursor.fetchall()
+    conn.close()
+    return render_template("limits.html", customers=customers, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+
+@admin_bp.route("/khata")
+@admin_required
+def khata_ledger():
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, customer_name, customer_phone, total_amount, timestamp FROM bills WHERE payment_mode = 'Credit' AND khata_status = 'Unpaid' ORDER BY id DESC")
+    unpaid_bills = cursor.fetchall()
+    cursor.execute("SELECT SUM(total_amount) FROM bills WHERE payment_mode = 'Credit' AND khata_status = 'Unpaid'")
+    total_khata_due = cursor.fetchone()[0] or 0.0
+    conn.close()
+    return render_template("khata.html", unpaid_bills=unpaid_bills, total_khata_due=total_khata_due, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+
+@admin_bp.route("/settle_khata/<int:bill_id>")
+@admin_required
+def settle_khata(bill_id):
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE bills SET khata_status = 'Paid' WHERE id = ?", (bill_id,))
+    conn.commit()
+    conn.close()
+    flash(f"Khata Bill #{bill_id} marked as Paid/Settled!")
+    return redirect(url_for("admin.khata_ledger"))
+
+@admin_bp.route("/low_stock")
+@admin_required
+def low_stock_alert():
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, barcode, name, price, stock, batch_no FROM products WHERE stock <= 15 ORDER BY stock ASC")
+    products = cursor.fetchall()
+    conn.close()
+    return render_template("low_stock.html", products=products, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+
+@admin_bp.route("/purchase", methods=["GET", "POST"])
+@admin_required
+def purchase_entry():
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    if request.method == "POST":
+        supplier_name = request.form.get("supplier_name")
+        invoice_no = request.form.get("invoice_no")
+        product_id = request.form.get("product_id")
+        qty_added = int(request.form.get("qty") or 0)
+        total_amount = float(request.form.get("total_amount") or 0.0)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        cursor.execute("SELECT name FROM products WHERE id = ?", (product_id,))
+        prod = cursor.fetchone()
+        if prod:
+            p_name = prod[0]
+            items_summary = f"{p_name} (x{qty_added})"
+            cursor.execute("""
+                INSERT INTO purchases (supplier_name, invoice_no, items_summary, total_amount, timestamp)
+                VALUES (?, ?, ?, ?, ?)
+            """, (supplier_name, invoice_no, items_summary, total_amount, timestamp))
+            cursor.execute("UPDATE products SET stock = stock + ? WHERE id = ?", (qty_added, product_id))
+            conn.commit()
+            flash("Purchase recorded & inventory stock updated successfully!")
+    cursor.execute("SELECT id, name, stock FROM products")
+    products = cursor.fetchall()
+    cursor.execute("SELECT * FROM purchases ORDER BY id DESC")
+    purchases = cursor.fetchall()
+    conn.close()
+    return render_template("purchase.html", products=products, purchases=purchases, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+
+@admin_bp.route("/daybook")
+@admin_required
+def daybook():
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, customer_name, customer_phone, total_amount, payment_mode, khata_status, timestamp FROM bills ORDER BY id DESC")
+    bills = cursor.fetchall()
+    cursor.execute("SELECT payment_mode, SUM(total_amount) FROM bills GROUP BY payment_mode")
+    totals_by_mode = dict(cursor.fetchall())
+    cursor.execute("SELECT SUM(total_amount) FROM bills")
+    total_revenue = cursor.fetchone()[0] or 0.0
+    cursor.execute("SELECT SUM(amount) FROM expenses")
+    total_expenses = cursor.fetchone()[0] or 0.0
+    conn.close()
+    return render_template("daybook.html", bills=bills, totals_by_mode=totals_by_mode, total_revenue=total_revenue, total_expenses=total_expenses, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+
+@admin_bp.route("/gst_report")
+@admin_required
+def gst_report():
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, items_summary, subtotal, gst_amount, total_amount, timestamp FROM bills ORDER BY id DESC")
+    bills = cursor.fetchall()
+    cursor.execute("SELECT SUM(subtotal), SUM(gst_amount), SUM(total_amount) FROM bills")
+    totals = cursor.fetchone()
+    conn.close()
+    return render_template("gst_report.html", bills=bills, taxable_total=totals[0] or 0.0, gst_total=totals[1] or 0.0, grand_total=totals[2] or 0.0, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+
+@admin_bp.route("/expenses", methods=["GET", "POST"])
+@admin_required
+def expenses():
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    if request.method == "POST":
+        title = request.form.get("title")
+        amount = float(request.form.get("amount") or 0.0)
+        category = request.form.get("category", "General")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("""
+            INSERT INTO expenses (title, amount, category, timestamp)
+            VALUES (?, ?, ?, ?)
+        """, (title, amount, category, timestamp))
+        conn.commit()
+        flash("Expense recorded successfully!")
+    cursor.execute("SELECT * FROM expenses ORDER BY id DESC")
+    expense_list = cursor.fetchall()
+    cursor.execute("SELECT SUM(amount) FROM expenses")
+    total_expenses = cursor.fetchone()[0] or 0.0
+    conn.close()
+    return render_template("expenses.html", expenses=expense_list, total_expenses=total_expenses, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+
+@admin_bp.route("/profit_loss")
+@admin_required
+def profit_loss():
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT SUM(total_amount) FROM bills")
+    total_revenue = cursor.fetchone()[0] or 0.0
+    cursor.execute("SELECT SUM(total_amount) FROM purchases")
+    total_purchases = cursor.fetchone()[0] or 0.0
+    cursor.execute("SELECT SUM(amount) FROM expenses")
+    total_expenses = cursor.fetchone()[0] or 0.0
+    conn.close()
+    net_profit = total_revenue - (total_purchases + total_expenses)
+    return render_template("profit_loss.html", total_revenue=total_revenue, total_purchases=total_purchases, total_expenses=total_expenses, net_profit=net_profit, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+
+@admin_bp.route("/batches")
+@admin_required
+def batch_tracker():
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, barcode, name, price, stock, batch_no, expiry_date, rack_location FROM products ORDER BY expiry_date ASC")
+    products = cursor.fetchall()
+    conn.close()
+    return render_template("batches.html", products=products, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+
+@admin_bp.route("/settings", methods=["GET", "POST"])
+@admin_required
+def store_settings():
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS store_settings (key TEXT PRIMARY KEY, value TEXT)")
+    if request.method == "POST":
+        store_name = request.form.get("store_name", "SWARAJ GROCERY")
+        store_address = request.form.get("store_address", "Main Road, Katol, Nagpur, Maharashtra")
+        gstin = request.form.get("gstin", "27AAAAA0000A1Z5")
+        phone = request.form.get("phone", "9876543210")
+        receipt_header = request.form.get("receipt_header", "Thank you for shopping at Swaraj Grocery!")
+        receipt_footer = request.form.get("receipt_footer", "Goods once sold will be replaced within 3 days.\nNo exchange without bill.\nVisit Again! 🙏")
+        
+        for key, val in [
+            ("store_name", store_name),
+            ("store_address", store_address),
+            ("gstin", gstin),
+            ("phone", phone),
+            ("receipt_header", receipt_header),
+            ("receipt_footer", receipt_footer)
+        ]:
+            cursor.execute("""
+                INSERT INTO store_settings (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = ?
+            """, (key, val, val))
+        conn.commit()
+        flash("Bill Header & Footer Settings updated successfully!")
+        
+    cursor.execute("SELECT key, value FROM store_settings")
+    settings_dict = dict(cursor.fetchall())
+    conn.close()
+    return render_template("settings.html", settings=settings_dict, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+
+@admin_bp.route("/gstr_export")
+@admin_required
+def gstr_export():
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, customer_name, subtotal, gst_amount, total_amount, timestamp FROM bills")
+    bills = cursor.fetchall()
+    conn.close()
+    
+    gstr_data = {
+        "gstin": "27AAAAA0000A1Z5",
+        "store_name": "Swaraj Grocery, Katol",
+        "return_period": datetime.now().strftime("%m%Y"),
+        "b2cs": []
+    }
+    for b in bills:
+        gstr_data["b2cs"].append({
+            "inum": f"INV-{b[0]}",
+            "idt": b[5],
+            "val": b[4],
+            "pos": "27-Maharashtra",
+            "txval": b[2],
+            "iamt": 0.0,
+            "camt": round(b[3]/2, 2),
+            "samt": round(b[3]/2, 2)
+        })
+    return Response(json.dumps(gstr_data, indent=4), mimetype="application/json", headers={"Content-Disposition": "attachment;filename=GSTR1_Export.json"})
+
+# --- ADMIN NAVBAR SNIPPET ---
+ADMIN_NAVBAR_SNIPPET = """
+<div class="bg-slate-900 text-white p-4 shadow-xl mb-6 rounded-2xl border border-slate-800">
+    <div class="flex flex-col md:flex-row justify-between items-center pb-3 mb-3 border-b border-slate-800 gap-2">
+        <div class="flex items-center space-x-3">
+            <span class="text-xl font-extrabold tracking-wide text-emerald-400">🛡️ SWARAJ GROCERY ADMIN ERP</span>
+            <span class="text-xs bg-emerald-600 text-white px-2.5 py-1 rounded-full font-bold shadow-sm">Katol Store</span>
+        </div>
+        <div class="flex items-center space-x-4 text-xs font-mono">
+            <span class="text-green-400 font-bold">● Secure Admin Mode</span>
+            <a href="/admin_logout" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded-lg font-bold transition">🔒 Logout</a>
+        </div>
+    </div>
+    <div class="flex flex-wrap gap-1.5 justify-center md:justify-start text-xs font-medium">
+        <a href="/pos" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-green-600 text-slate-200 hover:text-white transition shadow-sm">🛍️ POS Counter</a>
+        <a href="/online_orders" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold transition shadow-sm flex items-center gap-1">
+            🔔 Orders <span id="order-badge" class="bg-rose-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-extrabold hidden">0</span>
+        </a>
+        <a href="/inventory" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white transition shadow-sm">📦 Inventory</a>
+        <a href="/product_images" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-pink-600 text-slate-200 hover:text-white transition shadow-sm">🖼️ Online Images</a>
+        <a href="/low_stock" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-600 text-slate-200 hover:text-white transition shadow-sm">⚠️ Low Stock</a>
+        <a href="/batches" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-orange-600 text-slate-200 hover:text-white transition shadow-sm">⏳ Batches</a>
+        <a href="/purchase" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white transition shadow-sm">📥 Purchases</a>
+        <a href="/khata" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-600 text-slate-200 hover:text-white transition shadow-sm">📒 Khata Dues</a>
+        <a href="/khata_limits" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-yellow-600 text-slate-200 hover:text-white transition shadow-sm">🛡️ Credit Limits</a>
+        <a href="/daybook" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-purple-600 text-slate-200 hover:text-white transition shadow-sm">📊 Day Book</a>
+        <a href="/profit_loss" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-yellow-700 text-slate-200 hover:text-white transition shadow-sm">📈 P&L</a>
+        <a href="/gst_report" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-teal-600 text-slate-200 hover:text-white transition shadow-sm">📑 GST Report</a>
+        <a href="/gstr_export" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-cyan-600 text-slate-200 hover:text-white transition shadow-sm">📥 GSTR JSON</a>
+        <a href="/expenses" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-600 text-slate-200 hover:text-white transition shadow-sm">💸 Expenses</a>
+        <a href="/settings" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition shadow-sm">⚙️ Bill Settings</a>
+    </div>
+</div>
+
+<script>
+    function playBeep() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, ctx.currentTime);
+            gain.gain.setValueAtTime(0.2, ctx.currentTime);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.2);
+        } catch(e) {
+            console.log('Audio Context unsupported or blocked');
+        }
+    }
+
+    let lastOrderCount = localStorage.getItem('swaraj_last_order_count') !== null ? parseInt(localStorage.getItem('swaraj_last_order_count')) : null;
+
+    function pollOrders() {
+        fetch('/api/unread_orders_count')
+            .then(res => res.json())
+            .then(data => {
+                const badge = document.getElementById('order-badge');
+                if (lastOrderCount === null) {
+                    lastOrderCount = data.count;
+                    localStorage.setItem('swaraj_last_order_count', data.count);
+                } else if (data.count > lastOrderCount) {
+                    playBeep();
+                    lastOrderCount = data.count;
+                    localStorage.setItem('swaraj_last_order_count', data.count);
+                }
+                
+                if (data.count > 0) {
+                    badge.innerText = data.count;
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            }).catch(ext => console.log('Polling error:', ext));
+    }
+
+    setInterval(pollOrders, 10000);
+    pollOrders();
+</script>
+"""

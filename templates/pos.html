@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swaraj Grocery - Marg POS Counter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        function toggleCashInput(mode) {
+            const box = document.getElementById('cash-tendered-box');
+            const cashInput = document.getElementById('cash_tendered');
+            if (mode === 'Cash') {
+                box.style.display = 'block';
+                cashInput.required = false;
+            } else {
+                box.style.display = 'none';
+                cashInput.required = false;
+            }
+        }
+        function updateRupeeDiscount() {
+            const percentInput = document.getElementById('discount_percent_input');
+            const subtotal = parseFloat(percentInput.getAttribute('data-subtotal')) || 0;
+            const rupeeInput = document.getElementById('discount_input');
+            const percent = parseFloat(percentInput.value) || 0;
+            if (percent >= 0) {
+                const rupeeVal = (subtotal * percent) / 100;
+                rupeeInput.value = rupeeVal.toFixed(2);
+            }
+        }
+        window.onload = function() {
+            const scanInput = document.getElementById('barcode_scan');
+            if(scanInput) scanInput.focus();
+        };
+    </script>
+</head>
+<body class="bg-slate-100 font-sans p-4 md:p-6">
+    <!-- Admin Navigation Header -->
+    <div class="bg-slate-900 text-white p-4 shadow-xl mb-6 rounded-2xl border border-slate-800">
+        <div class="flex flex-col md:flex-row justify-between items-center pb-3 mb-3 border-b border-slate-800 gap-2">
+            <div class="flex items-center space-x-3">
+                <span class="text-xl font-extrabold tracking-wide text-emerald-400">🛡️ SWARAJ GROCERY ADMIN ERP</span>
+                <span class="text-xs bg-emerald-600 text-white px-2.5 py-1 rounded-full font-bold shadow-sm">Katol Store</span>
+            </div>
+            <div class="flex items-center space-x-4 text-xs font-mono">
+                <span class="text-green-400 font-bold">● Secure Admin Mode</span>
+                <a href="/admin_logout" class="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded-lg font-bold transition">🔒 Logout</a>
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-1.5 justify-center md:justify-start text-xs font-medium">
+            <a href="/pos" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-green-600 text-slate-200 hover:text-white transition shadow-sm">🛍️ POS Counter</a>
+            <a href="/online_orders" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold transition shadow-sm flex items-center gap-1">
+                🔔 Orders <span id="order-badge" class="bg-rose-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-extrabold hidden">0</span>
+            </a>
+            <a href="/inventory" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white transition shadow-sm">📦 Inventory</a>
+            <a href="/product_images" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-pink-600 text-slate-200 hover:text-white transition shadow-sm">🖼️ Online Images</a>
+            <a href="/low_stock" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-600 text-slate-200 hover:text-white transition shadow-sm">⚠️ Low Stock</a>
+            <a href="/batches" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-orange-600 text-slate-200 hover:text-white transition shadow-sm">⏳ Batches</a>
+            <a href="/purchase" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white transition shadow-sm">📥 Purchases</a>
+            <a href="/khata" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-amber-600 text-slate-200 hover:text-white transition shadow-sm">📒 Khata Dues</a>
+            <a href="/khata_limits" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-yellow-600 text-slate-200 hover:text-white transition shadow-sm">🛡️ Credit Limits</a>
+            <a href="/daybook" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-purple-600 text-slate-200 hover:text-white transition shadow-sm">📊 Day Book</a>
+            <a href="/profit_loss" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-yellow-700 text-slate-200 hover:text-white transition shadow-sm">📈 P&L</a>
+            <a href="/gst_report" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-teal-600 text-slate-200 hover:text-white transition shadow-sm">📑 GST Report</a>
+            <a href="/gstr_export" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-cyan-600 text-slate-200 hover:text-white transition shadow-sm">📥 GSTR JSON</a>
+            <a href="/expenses" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-600 text-slate-200 hover:text-white transition shadow-sm">💸 Expenses</a>
+            <a href="/settings" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white transition shadow-sm">⚙️ Bill Settings</a>
+        </div>
+    </div>
+
+    <!-- Background Polling Script for Orders -->
+    <script>
+        function playBeep() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, ctx.currentTime);
+                gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.2);
+            } catch(e) {}
+        }
+
+        let lastOrderCount = localStorage.getItem('swaraj_last_order_count') !== null ? parseInt(localStorage.getItem('swaraj_last_order_count')) : null;
+
+        function pollOrders() {
+            fetch('/api/unread_orders_count')
+                .then(res => res.json())
+                .then(data => {
+                    const badge = document.getElementById('order-badge');
+                    if (!badge) return;
+                    if (lastOrderCount === null) {
+                        lastOrderCount = data.count;
+                        localStorage.setItem('swaraj_last_order_count', data.count);
+                    } else if (data.count > lastOrderCount) {
+                        playBeep();
+                        lastOrderCount = data.count;
+                        localStorage.setItem('swaraj_last_order_count', data.count);
+                    }
+                    if (data.count > 0) {
+                        badge.innerText = data.count;
+                        badge.classList.remove('hidden');
+                    } else {
+                        badge.classList.add('hidden');
+                    }
+                }).catch(err => {});
+        }
+
+        setInterval(pollOrders, 10000);
+        pollOrders();
+    </script>
+
+    <div class="max-w-7xl mx-auto flex flex-col lg:flex-row gap-6">
+        <!-- Product Catalog Section -->
+        <div class="w-full lg:w-2/3 bg-white p-4 md:p-6 rounded-2xl shadow-md border border-slate-200 flex flex-col justify-between">
+            <div>
+                <h2 class="text-lg font-bold text-slate-800 mb-3">🏷️ Store Product Catalog &amp; Quick Scanner</h2>
+                <form action="/add_to_cart" method="POST" class="mb-4 bg-emerald-50 p-3 rounded-xl border border-emerald-300 flex gap-2 items-center">
+                    <span class="text-xs font-bold text-emerald-800">📸 Barcode Scan:</span>
+                    <input type="text" id="barcode_scan" name="barcode_scan" placeholder="Scan Barcode &amp; Press Enter..." autofocus class="flex-1 p-2 border border-emerald-400 rounded-lg text-xs bg-white font-mono">
+                    <button type="submit" class="bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-800 shadow">Scan / Add</button>
+                </form>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 overflow-y-auto max-h-[45vh]">
+                    {% for p in products %}
+                    <form action="/add_to_cart" method="POST" class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between">
+                        <input type="hidden" name="product_id" value="{{ p[0] }}">
+                        <div>
+                            <h3 class="font-bold text-sm text-slate-900">{{ p[2] }}</h3>
+                            <p class="text-xs text-slate-500">Stock: <span class="font-semibold text-slate-700">{{ p[4] }}</span></p>
+                            <p class="text-green-600 font-bold text-base mt-1">₹{{ p[3] }}</p>
+                        </div>
+                        <button type="submit" class="mt-3 bg-green-600 text-white py-1.5 rounded-lg text-xs font-bold hover:bg-green-700 transition">Add to Bill</button>
+                    </form>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Bill Section -->
+        <div class="w-full lg:w-1/3 bg-white p-4 md:p-6 rounded-2xl shadow-md border border-slate-200 flex flex-col justify-between">
+            <div>
+                <h2 class="text-lg font-bold text-slate-800 mb-2 border-b pb-2">Active Bill &amp; Schemes</h2>
+                <div class="overflow-y-auto max-h-[20vh] space-y-1.5">
+                    {% for item in cart %}
+                    <div class="flex justify-between items-center bg-slate-50 p-2 rounded-lg border text-xs">
+                        <div>
+                            <h4 class="font-semibold text-slate-800">{{ item.name }}</h4>
+                            <p class="text-[10px] text-slate-500">₹{{ item.price }} x {{ item.qty }} (GST: {{ item.gst }}%)</p>
+                        </div>
+                        <div class="flex items-center space-x-1.5">
+                            <a href="/update_cart/{{ loop.index0 }}/decrease" class="px-2 bg-slate-200 rounded font-bold">-</a>
+                            <span class="font-semibold">{{ item.qty }}</span>
+                            <a href="/update_cart/{{ loop.index0 }}/increase" class="px-2 bg-slate-200 rounded font-bold">+</a>
+                            <a href="/update_cart/{{ loop.index0 }}/remove" class="text-red-500 font-bold ml-1">🗑️</a>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-slate-400 text-center py-6 text-xs">Bill is empty. Select products or scan barcode.</p>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="border-t pt-2 space-y-1.5">
+                <div class="flex justify-between text-slate-600 text-xs">
+                    <span>Subtotal:</span>
+                    <span>₹{{ "%.2f"|format(subtotal) }}</span>
+                </div>
+                <div class="flex justify-between text-slate-600 text-xs">
+                    <span>CGST (Central Tax):</span>
+                    <span>₹{{ "%.2f"|format(cgst_total) }}</span>
+                </div>
+                <div class="flex justify-between text-slate-600 text-xs">
+                    <span>SGST (State Tax):</span>
+                    <span>₹{{ "%.2f"|format(sgst_total) }}</span>
+                </div>
+                <div class="flex justify-between text-sm font-bold text-slate-900 border-t pt-1">
+                    <span>Grand Total:</span>
+                    <span class="text-green-600">₹{{ "%.2f"|format(grand_total) }}</span>
+                </div>
+                <form action="/checkout" method="POST" class="space-y-1.5 mt-1">
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-700">Customer Name:</label>
+                            <input type="text" name="customer_name" placeholder="Walking Customer" value="Walking Customer" required class="w-full p-1.5 border rounded-lg text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-700">Phone (for Khata):</label>
+                            <input type="text" name="customer_phone" placeholder="10-digit no." class="w-full p-1.5 border rounded-lg text-xs">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-1.5">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-700">Discount (%):</label>
+                            <input type="number" step="0.01" id="discount_percent_input" name="discount_percent" value="0.00" placeholder="e.g. 5%" data-subtotal="{{ subtotal }}" oninput="updateRupeeDiscount()" class="w-full p-1.5 border rounded-lg text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-700">Discount (₹):</label>
+                            <input type="number" step="0.01" id="discount_input" name="discount" value="0.00" class="w-full p-1.5 border rounded-lg text-xs">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-700">Payment Mode:</label>
+                        <select name="payment_mode" required onchange="toggleCashInput(this.value)" class="w-full p-1.5 border rounded-lg text-xs bg-slate-50 font-semibold">
+                            <option value="Cash">💵 Cash</option>
+                            <option value="UPI">📱 UPI / QR</option>
+                            <option value="Credit">📒 Credit / Khata</option>
+                        </select>
+                    </div>
+                    <div id="cash-tendered-box">
+                        <div class="flex gap-1.5 items-center">
+                            <div class="w-1/2">
+                                <label class="block text-[10px] text-slate-600">Cash Tendered:</label>
+                                <input type="number" step="0.01" id="cash_tendered" name="cash_tendered" placeholder="₹ Amt" class="w-full p-1.5 border rounded-lg text-xs">
+                            </div>
+                            <div class="w-1/2 bg-green-50 p-1.5 rounded-lg border border-green-200 text-center">
+                                <span class="block text-[9px] text-green-700 font-bold">CHANGE:</span>
+                                <span id="change-display" class="text-xs font-bold text-green-800">₹0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="w-full bg-green-700 text-white py-2 rounded-xl font-bold text-xs hover:bg-green-800 transition shadow">Finalize &amp; Open Cash Drawer</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,261 @@
+from datetime import datetime
+import json
+import sqlite3
+from flask import Blueprint, flash, redirect, render_template, request, url_for
+
+customer_bp = Blueprint("customer", __name__)
+
+
+@customer_bp.route("/")
+def customer_shop():
+  conn = sqlite3.connect("store_pos.db")
+  conn.row_factory = sqlite3.Row
+  cursor = conn.cursor()
+  # Query including image_url for the online storefront display
+  cursor.execute(
+      "SELECT id, barcode, name, price, stock, gst_rate, batch_no,"
+      " expiry_date, rack_location, category, image_url FROM products WHERE stock > 0"
+  )
+  products = cursor.fetchall()
+  conn.close()
+  return render_template("customer_shop.html", products=products)
+
+
+@customer_bp.route("/online_checkout", methods=["POST"])
+def online_checkout():
+  try:
+    customer_name = (request.form.get("customer_name") or "Online Customer").strip()
+    customer_phone = (request.form.get("customer_phone") or "").strip()
+
+    area = (request.form.get("area") or "").strip()
+    house_no = (request.form.get("house_no") or "").strip()
+    locality_town = (request.form.get("locality_town") or "Katol").strip()
+
+    address_parts = [
+        p
+        for p in [
+            house_no,
+            area,
+            locality_town,
+        ]
+        if p
+    ]
+    delivery_address = ", ".join(address_parts)
+
+    payment_mode = request.form.get("payment_mode", "Online UPI")
+    cart_data_json = request.form.get("cart_data", "{}")
+
+    try:
+      cart_items = json.loads(cart_data_json)
+    except Exception:
+      cart_items = {}
+
+    if not cart_items:
+      flash("Your online cart is empty!")
+      return redirect(url_for("customer.customer_shop"))
+
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+
+    # Ensure delivery_address, order_status, and order_source columns exist safely
+    for col_sql in [
+        "ALTER TABLE bills ADD COLUMN delivery_address TEXT DEFAULT ''",
+        "ALTER TABLE bills ADD COLUMN order_status TEXT DEFAULT 'Unpacked'",
+        "ALTER TABLE bills ADD COLUMN order_source TEXT DEFAULT 'POS'",
+    ]:
+      try:
+        cursor.execute(col_sql)
+      except Exception:
+        pass
+
+    subtotal = 0.0
+    gst_total = 0.0
+    summary_parts = []
+    processed_cart = []
+
+    for p_id_str, item in cart_items.items():
+      try:
+        p_id = int(p_id_str)
+      except ValueError:
+        continue
+      qty = max(1, int(item.get("qty", 1)))
+
+      cursor.execute(
+          "SELECT id, name, price, stock, gst_rate FROM products WHERE id = ?",
+          (p_id,),
+      )
+      prod = cursor.fetchone()
+      if prod:
+        _, name, price, stock, gst_rate = prod
+        price = float(price or 0.0)
+        gst_rate = float(gst_rate if gst_rate is not None else 5.0)
+      else:
+        name = item.get("name", "Product")
+        price = float(item.get("price", 0.0) or 0.0)
+        gst_rate = float(item.get("gst", 5.0) or 5.0)
+
+      # Prices are GST-inclusive: line total = price * qty, included GST = line_total * gst / (100 + gst)
+      line_total = round(price * qty, 2)
+      item_gst = round((line_total * gst_rate) / (100.0 + gst_rate), 2) if gst_rate > 0 else 0.0
+
+      subtotal += line_total
+      gst_total += item_gst
+      summary_parts.append(f"{name} (x{qty})")
+      processed_cart.append({
+          "name": name,
+          "price": price,
+          "qty": qty,
+          "gst": gst_rate,
+          "total": line_total,
+      })
+
+      if prod:
+        cursor.execute(
+            "UPDATE products SET stock = MAX(0, stock - ?) WHERE id = ?", (qty, p_id)
+        )
+
+    subtotal = round(subtotal, 2)
+    gst_total = round(gst_total, 2)
+    grand_total = subtotal
+    items_summary = ", ".join(summary_parts) if summary_parts else "General Order"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    cursor.execute(
+        """
+            INSERT INTO bills (
+                customer_name, customer_phone, delivery_address, items_summary,
+                subtotal, discount, gst_amount, total_amount,
+                payment_mode, cash_tendered, change_returned, khata_status, order_status, order_source, timestamp
+            )
+            VALUES (?, ?, ?, ?, ?, 0.0, ?, ?, ?, 0.0, 0.0, 'Paid', 'Unpacked', 'Online', ?)
+        """,
+        (
+            customer_name,
+            customer_phone,
+            delivery_address,
+            items_summary,
+            subtotal,
+            gst_total,
+            grand_total,
+            payment_mode,
+            timestamp,
+        ),
+    )
+    bill_id = cursor.lastrowid
+
+    for item in processed_cart:
+      cursor.execute(
+          """
+                INSERT INTO bill_items (bill_id, item_name, price, qty, gst_rate, total)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """,
+          (
+              bill_id,
+              item["name"],
+              item["price"],
+              item["qty"],
+              item["gst"],
+              item["total"],
+          ),
+      )
+
+    if customer_phone:
+      earned_points = round(grand_total / 100.0, 2)
+      cursor.execute(
+          """
+            INSERT INTO customers (name, phone, loyalty_points) VALUES (?, ?, ?)
+            ON CONFLICT(phone) DO UPDATE SET loyalty_points = loyalty_points + ?
+        """,
+          (customer_name, customer_phone, earned_points, earned_points),
+      )
+
+    conn.commit()
+    conn.close()
+
+    return redirect(url_for("customer.customer_receipt", bill_id=bill_id))
+
+  except Exception as e:
+    return (
+        f"<h3 style='color:red;'>Checkout Error: {str(e)}</h3><p><a"
+        " href='/'>Return to Store</a></p>"
+    ), 500
+
+
+@customer_bp.route("/customer_receipt/<int:bill_id>")
+def customer_receipt(bill_id):
+  conn = sqlite3.connect("store_pos.db")
+  cursor = conn.cursor()
+
+  # Fetch bill details in explicit column order so indices stay consistent even if older DBs had columns added via ALTER TABLE
+  cursor.execute("""
+      SELECT
+          id, customer_name, customer_phone, items_summary,
+          subtotal, discount, gst_amount, total_amount,
+          payment_mode, cash_tendered, change_returned, khata_status,
+          timestamp, delivery_address, order_status
+      FROM bills
+      WHERE id = ?
+  """, (bill_id,))
+  raw_bill = cursor.fetchone()
+
+  if not raw_bill:
+    conn.close()
+    flash("❌ Invoice not found or order not placed yet!")
+    return redirect(url_for("customer.customer_shop"))
+
+  # Cast bill numeric columns to float/int to prevent formatting TypeErrors
+  bill = list(raw_bill)
+  for idx in [4, 5, 6, 7, 9, 10]:  # subtotal, discount, gst_amount, total_amount, cash_tendered, change_returned
+    if idx < len(bill) and bill[idx] is not None:
+      try:
+        bill[idx] = float(bill[idx])
+      except ValueError:
+        bill[idx] = 0.0
+
+  delivery_address = (bill[13] or "").strip() if len(bill) > 13 and bill[13] else ""
+
+  # Fetch bill items and cast numeric fields
+  cursor.execute(
+      "SELECT item_name, price, qty, gst_rate, total FROM bill_items WHERE bill_id = ?",
+      (bill_id,),
+  )
+  raw_items = cursor.fetchall()
+
+  items = []
+  for item in raw_items:
+    items.append((
+        item[0],
+        float(item[1]) if item[1] is not None else 0.0,
+        int(item[2]) if item[2] is not None else 1,
+        float(item[3]) if len(item) > 3 and item[3] is not None else 5.0,
+        float(item[4]) if len(item) > 4 and item[4] is not None else 0.0
+    ))
+
+  # Initialize store settings dictionary with bulletproof default fallbacks
+  settings_dict = {
+      "store_name": "SWARAJ GROCERY",
+      "store_address": "Main Road, Katol, Nagpur, Maharashtra",
+      "gstin": "27AAAAA0000A1Z5",
+      "phone": "9876543210",
+      "receipt_header": "Thank you for shopping at Swaraj Grocery!",
+      "receipt_footer": "Goods once sold will be replaced within 3 days."
+  }
+
+  try:
+    cursor.execute("CREATE TABLE IF NOT EXISTS store_settings (key TEXT PRIMARY KEY, value TEXT)")
+    cursor.execute("SELECT key, value FROM store_settings")
+    rows = cursor.fetchall()
+    for r in rows:
+      if r[0] and r[1]:
+        settings_dict[r[0]] = r[1]
+  except Exception:
+    pass
+
+  conn.close()
+  return render_template(
+      "receipt.html",
+      bill=bill,
+      items=items,
+      settings=settings_dict,
+      delivery_address=delivery_address,
+  )

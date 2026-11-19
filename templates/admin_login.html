@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - Swaraj Grocery</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 flex items-center justify-center min-h-screen font-sans">
+    <div class="bg-slate-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-slate-700">
+        <div class="text-center mb-6">
+            <span class="text-4xl">🔐</span>
+            <h1 class="text-xl font-black text-white mt-2">Swaraj Grocery Admin</h1>
+            <p class="text-xs text-slate-400 mt-1">Enter your secure administrator password</p>
+        </div>
+
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="mb-4 bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs p-3 rounded-xl font-bold text-center">
+              {{ messages[0] }}
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <form action="/admin_login" method="POST" class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-slate-300 mb-1">Password:</label>
+                <input type="password" name="passcode" placeholder="Enter admin password" required autofocus class="w-full p-3 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white outline-none focus:border-emerald-500">
+            </div>
+            <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-black text-xs transition shadow-lg">
+                Login to POS & Dashboard
+            </button>
+        </form>
+        <div class="mt-6 text-center">
+            <a href="/" class="text-xs text-emerald-400 hover:underline">← Return to Online Store</a>
+        </div>
+    </div>
+</body>
+</html>

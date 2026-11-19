@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tax Invoice Receipt - Swaraj Grocery</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @media print {
+            body { background: white; padding: 0; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 font-sans p-4 md:p-8 flex flex-col items-center">
+    <div class="w-full max-w-md bg-white p-6 rounded-2xl shadow-xl border border-slate-200 text-xs font-mono">
+        <!-- Store Header -->
+        <div class="text-center border-b border-dashed border-slate-300 pb-4 mb-4 font-sans">
+            <h1 class="text-lg font-black uppercase tracking-wider text-slate-900">{{ settings.get('store_name', 'SWARAJ GROCERY') if settings is mapping else 'SWARAJ GROCERY' }}</h1>
+            <p class="text-[10px] text-slate-500">{{ settings.get('store_address', 'Main Road, Katol, Nagpur, Maharashtra') if settings is mapping else 'Main Road, Katol, Nagpur, Maharashtra' }}</p>
+            <p class="text-[10px] text-slate-500">GSTIN: {{ settings.get('gstin', '27AAAAA0000A1Z5') if settings is mapping else '27AAAAA0000A1Z5' }} | Ph: {{ settings.get('phone', '9876543210') if settings is mapping else '9876543210' }}</p>
+            <p class="text-[10px] text-slate-400 mt-1">{{ bill[12] if bill|length > 12 else '' }}</p>
+        </div>
+        
+        <!-- Bill Metadata -->
+        <div class="mb-4 space-y-1 text-slate-700 text-[11px]">
+            <div class="flex justify-between">
+                <span class="font-bold">Invoice ID:</span>
+                <span class="font-bold">#{{ bill[0] }}</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="font-bold">Customer:</span>
+                <span class="font-bold">{{ bill[1] }}</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="font-bold">Phone:</span>
+                <span class="font-bold">{{ bill[2] or 'N/A' }}</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="font-bold">Pay Mode:</span>
+                <span class="font-bold text-emerald-700">{{ bill[8] }}</span>
+            </div>
+            <div class="flex justify-between">
+                <span class="font-bold">Status:</span>
+                <span class="font-bold {% if bill[11] == 'Paid' %}text-green-600{% else %}text-red-600{% endif %}">{{ bill[11] }}</span>
+            </div>
+            {% set addr = (delivery_address or (bill[13] if bill|length > 13 else ''))|trim %}
+            {% if addr %}
+            <div class="flex justify-between items-start gap-3 pt-1 border-t border-slate-100 font-sans">
+                <span class="font-bold text-slate-700 whitespace-nowrap">📍 Address:</span>
+                <span class="font-bold text-slate-900 text-right break-words">{{ addr }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Items Table -->
+        <table class="w-full border-t border-b border-slate-200 py-2 mb-4 text-[11px]">
+            <thead>
+                <tr class="text-left text-[10px] text-slate-400 border-b border-slate-100">
+                    <th class="py-1 font-bold">Item</th>
+                    <th class="py-1 text-center font-bold">Qty</th>
+                    <th class="py-1 text-right font-bold">Price</th>
+                    <th class="py-1 text-center font-bold">GST%</th>
+                    <th class="py-1 text-right font-bold">Total</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+                {% for item in items %}
+                <tr>
+                    <td class="py-1.5 font-bold text-slate-800 font-sans">{{ item[0] }}</td>
+                    <td class="py-1.5 text-center font-bold text-slate-600">{{ item[2] }}</td>
+                    <td class="py-1.5 text-right font-bold text-slate-600">₹{{ "%.2f"|format(item[1] or 0.0) }}</td>
+                    <td class="py-1.5 text-center font-bold text-slate-500">{{ item[3]|default(5.0) }}%</td>
+                    <td class="py-1.5 text-right font-bold text-slate-800">₹{{ "%.2f"|format(item[4] or 0.0) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Totals & Savings -->
+        <div class="space-y-1.5 border-b border-dashed border-slate-300 pb-4 mb-4 text-[11px] text-slate-600">
+            <div class="flex justify-between font-bold">
+                <span>Subtotal:</span>
+                <span class="font-bold text-slate-800">₹{{ "%.2f"|format(bill[4] or 0.0) }}</span>
+            </div>
+            {% if (bill[5] or 0.0) > 0 %}
+            <div class="flex justify-between text-emerald-600 font-bold">
+                <span>You are saving total amount of:</span>
+                <span class="font-bold">₹{{ "%.2f"|format(bill[5] or 0.0) }}</span>
+            </div>
+            {% endif %}
+            <div class="flex justify-between font-bold">
+                <span>GST Amount Included <span class="text-[9px] text-slate-400 font-bold">(item prices all include gst):</span></span>
+                <span class="font-bold text-slate-800">₹{{ "%.2f"|format(bill[6] or 0.0) }}</span>
+            </div>
+            <div class="flex justify-between text-sm font-black text-slate-900 pt-2 border-t border-slate-200">
+                <span class="font-bold">Total payable amount:</span>
+                <span class="font-bold text-emerald-600 text-base">₹{{ "%.2f"|format(bill[7] or 0.0) }}</span>
+            </div>
+            {% if bill[8] == 'Cash' %}
+            <div class="flex justify-between text-slate-500 pt-1 font-bold">
+                <span>Cash Tendered:</span>
+                <span class="font-bold">₹{{ "%.2f"|format(bill[9] or 0.0) }}</span>
+            </div>
+            <div class="flex justify-between text-emerald-700 font-bold">
+                <span>Change Returned:</span>
+                <span class="font-bold">₹{{ "%.2f"|format(bill[10] or 0.0) }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- GST Bifurcation Table -->
+        {% if (bill[6] or 0.0) > 0 %}
+        <div class="mb-4 border-b border-dashed border-slate-300 pb-4">
+            <p class="font-bold text-slate-800 mb-2 text-[11px]">GST Bifurcation :</p>
+            <table class="w-full text-[10px]">
+                <thead>
+                    <tr class="text-left text-slate-400 border-b border-slate-100">
+                        <th class="py-0.5 font-bold">GST Component</th>
+                        <th class="py-0.5 text-center font-bold">GST%</th>
+                        <th class="py-0.5 text-right font-bold">GST Base</th>
+                        <th class="py-0.5 text-right font-bold">GST Amt</th>
+                    </tr>
+                </thead>
+                <tbody class="text-slate-600">
+                    <tr>
+                        <td class="py-1 font-bold">CGST</td>
+                        <td class="py-1 text-center font-bold">2.50%</td>
+                        <td class="py-1 text-right font-bold">₹{{ "%.2f"|format(bill[4] or 0.0) }}</td>
+                        <td class="py-1 text-right font-bold">₹{{ "%.2f"|format((bill[6] or 0.0) / 2) }}</td>
+                    </tr>
+                    <tr>
+                        <td class="py-1 font-bold">SGST</td>
+                        <td class="py-1 text-center font-bold">2.50%</td>
+                        <td class="py-1 text-right font-bold">₹{{ "%.2f"|format(bill[4] or 0.0) }}</td>
+                        <td class="py-1 text-right font-bold">₹{{ "%.2f"|format((bill[6] or 0.0) / 2) }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Custom Footer Notes -->
+        <div class="text-center text-[10px] text-slate-500 space-y-1 mb-6 whitespace-pre-line font-sans">
+            <p class="font-bold text-slate-700">{{ settings.get('receipt_header', 'Thank you for shopping at Swaraj Grocery!') }}</p>
+            <p class="text-slate-500 font-bold">{{ settings.get('receipt_footer', 'Goods once sold will be replaced within 3 days.') }}</p>
+        </div>
+
+        <!-- Print & Navigation Actions -->
+        <div class="no-print flex gap-2">
+            <button onclick="window.print()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold text-xs transition shadow font-sans">
+                🖨️ Print Tax Invoice
+            </button>
+            <a href="/" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 py-2.5 rounded-xl font-bold text-xs text-center transition flex items-center justify-center font-sans">
+                ← Back to Store
+            </a>
+        </div>
+    </div>
+</body>
+</html>

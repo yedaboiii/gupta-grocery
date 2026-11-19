@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profit & Loss Statement - Swaraj Grocery</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 font-sans p-4 md:p-6">
+    {{ admin_navbar | safe }}
+    <div class="max-w-4xl mx-auto bg-white p-6 md:p-8 rounded-2xl shadow-md border border-slate-200">
+        <h1 class="text-2xl font-bold text-yellow-700 mb-2">📈 Profit & Loss (P&L) Statement</h1>
+        <p class="text-xs text-slate-500 mb-6">Financial performance summary for Swaraj Grocery (Katol Store)</p>
+        <div class="space-y-4 text-sm">
+            <div class="flex justify-between items-center bg-green-50 p-4 rounded-xl border border-green-200 shadow-sm">
+                <div>
+                    <p class="font-bold text-green-800">Total Sales Revenue (Inflow)</p>
+                    <p class="text-xs text-green-600">From counter POS and online store tax invoices</p>
+                </div>
+                <span class="text-xl font-bold text-green-700">₹{{ "%.2f"|format(total_revenue) }}</span>
+            </div>
+            <div class="flex justify-between items-center bg-indigo-50 p-4 rounded-xl border border-indigo-200 shadow-sm">
+                <div>
+                    <p class="font-bold text-indigo-800">Total Supplier Purchases (Stock Outflow)</p>
+                    <p class="text-xs text-indigo-600">Total amount paid to wholesalers for inventory restock</p>
+                </div>
+                <span class="text-xl font-bold text-indigo-700">- ₹{{ "%.2f"|format(total_purchases) }}</span>
+            </div>
+            <div class="flex justify-between items-center bg-rose-50 p-4 rounded-xl border border-rose-200 shadow-sm">
+                <div>
+                    <p class="font-bold text-rose-800">Total Operational Expenses</p>
+                    <p class="text-xs text-rose-600">Utilities, electricity, delivery, and miscellaneous store expenses</p>
+                </div>
+                <span class="text-xl font-bold text-rose-700">- ₹{{ "%.2f"|format(total_expenses) }}</span>
+            </div>
+            <div class="flex justify-between items-center p-6 rounded-xl border-2 shadow-sm {% if net_profit >= 0 %} bg-emerald-100 border-emerald-400 text-emerald-900 {% else %} bg-red-100 border-red-400 text-red-900 {% endif %}">
+                <div>
+                    <p class="text-sm font-bold uppercase tracking-wide">Net Profit / (Loss)</p>
+                    <p class="text-xs opacity-75">Revenue minus Purchases & Expenses</p>
+                </div>
+                <span class="text-2xl font-extrabold">₹{{ "%.2f"|format(net_profit) }}</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

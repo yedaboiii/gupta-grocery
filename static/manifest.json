@@ -1,0 +1,23 @@
+{
+  "name": "Swaraj Grocery's Store",
+  "short_name": "Swaraj Grocery",
+  "description": "Fresh quality daily essentials delivered instantly in Katol.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F6F8",
+  "theme_color": "#84C225",
+  "icons": [
+    {
+      "src": "https://images.weserv.nl/?url=raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f6d2.png&w=192&h=192&output=png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://images.weserv.nl/?url=raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f6d2.png&w=512&h=512&output=png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

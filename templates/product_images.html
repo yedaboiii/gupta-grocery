@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Online Product Images - Swaraj Grocery Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        function filterImages() {
+            const query = document.getElementById('image-search-input').value.toLowerCase();
+            const cards = document.getElementsByClassName('product-image-card');
+            for (let card of cards) {
+                const name = card.getAttribute('data-name').toLowerCase();
+                const barcode = card.getAttribute('data-barcode').toLowerCase();
+                if (name.includes(query) || barcode.includes(query)) {
+                    card.style.display = 'flex';
+                } else {
+                    card.style.display = 'none';
+                }
+            }
+        }
+        window.onload = function() {
+            const searchBox = document.getElementById('image-search-input');
+            if(searchBox) searchBox.focus();
+        };
+    </script>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        {{ admin_navbar | safe }}
+        
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl mb-6">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <div>
+                    <h1 class="text-xl font-black text-emerald-400 mb-1">🖼️ Online Store Product Images</h1>
+                    <p class="text-xs text-slate-400">Manage image URLs for items displayed on your public online customer storefront. Offline POS remains unaffected.</p>
+                </div>
+                <!-- Search & Barcode Scanner Bar -->
+                <div class="w-full md:w-80">
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">🔍</span>
+                        <input type="text" id="image-search-input" onkeyup="filterImages()" placeholder="Scan barcode or type name..." autofocus class="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white outline-none focus:border-emerald-500 font-mono">
+                    </div>
+                </div>
+            </div>
+
+            {% with messages = get_flashed_messages() %}
+              {% if messages %}
+                <div class="mb-4 bg-emerald-950 border border-emerald-800 text-emerald-200 px-4 py-3 rounded-xl text-xs font-bold">
+                  {{ messages[0] }}
+                </div>
+              {% endif %}
+            {% endwith %}
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="product-cards-container">
+                {% for p in products %}
+                <div class="product-image-card bg-slate-800 border border-slate-700 p-4 rounded-xl flex flex-col justify-between" data-name="{{ p['name'] }}" data-barcode="{{ p['barcode'] }}">
+                    <div>
+                        <div class="flex justify-between items-start mb-2">
+                            <div>
+                                <span class="text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded font-bold">{{ p['category'] }}</span>
+                                <h3 class="font-bold text-sm text-white mt-1">{{ p['name'] }}</h3>
+                                <p class="text-[10px] font-mono text-slate-400">Barcode: {{ p['barcode'] }}</p>
+                            </div>
+                            <div class="w-16 h-16 bg-slate-900 border border-slate-700 rounded-lg overflow-hidden flex items-center justify-center shrink-0">
+                                {% if p['image_url'] %}
+                                <img src="{{ p['image_url'] }}" alt="Preview" class="w-full h-full object-cover">
+                                {% else %}
+                                <span class="text-xl">📷</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <form action="/product_images" method="POST" class="mt-4 space-y-2">
+                        <input type="hidden" name="prod_id" value="{{ p['id'] }}">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 mb-1">Image Direct URL:</label>
+                            <input type="url" name="image_url" value="{{ p['image_url'] or '' }}" placeholder="https://example.com/image.jpg" class="w-full p-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white outline-none focus:border-emerald-500">
+                        </div>
+                        <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg text-xs font-bold transition shadow">
+                            💾 Save Image
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</body>
+</html>

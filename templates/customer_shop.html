@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swaraj Grocery - Online Store</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        let cart = {};
+
+        function addToCart(id, name, price, gst) {
+            if (!cart[id]) {
+                cart[id] = { name: name, price: parseFloat(price) || 0, gst: parseFloat(gst) || 0, qty: 1 };
+            } else {
+                cart[id].qty += 1;
+            }
+            updateUI();
+        }
+
+        function decrementCart(id) {
+            if (cart[id]) {
+                cart[id].qty -= 1;
+                if (cart[id].qty <= 0) {
+                    delete cart[id];
+                }
+            }
+            updateUI();
+        }
+
+        function addProdFromEl(btn) {
+            const container = btn.closest('.product-action-container');
+            const id = container.getAttribute('data-id');
+            const name = container.getAttribute('data-name');
+            const price = parseFloat(container.getAttribute('data-price'));
+            const gst = parseFloat(container.getAttribute('data-gst'));
+            addToCart(id, name, price, gst);
+        }
+
+        function toggleCartDrawer() {
+            const drawer = document.getElementById('cart-drawer');
+            const backdrop = document.getElementById('drawer-backdrop');
+            drawer.classList.toggle('translate-x-full');
+            backdrop.classList.toggle('hidden');
+        }
+
+        function syncHeaderLocation() {
+            const area = (document.getElementById('area_input')?.value || '').trim();
+            const town = (document.getElementById('locality_town_input')?.value || '').trim();
+            const headerCity = document.getElementById('header-delivery-city');
+            const headerArea = document.getElementById('header-delivery-area');
+
+            if (headerCity && town) {
+                headerCity.innerText = 'Home Delivery in ' + town;
+            }
+            if (headerArea) {
+                headerArea.innerText = (area ? area : 'Ambedkar Chowk') + ' ▾';
+            }
+        }
+
+        function updateUI() {
+            let subtotal = 0;
+            let gstTotal = 0;
+            let totalCount = 0;
+
+            const addButtons = document.querySelectorAll('.product-action-container');
+            addButtons.forEach(container => {
+                const prodId = container.getAttribute('data-id');
+                const price = parseFloat(container.getAttribute('data-price'));
+                const name = container.getAttribute('data-name');
+                const gst = parseFloat(container.getAttribute('data-gst'));
+
+                if (cart[prodId]) {
+                    container.innerHTML = `
+                        <div class="flex items-center justify-between bg-emerald-600 text-white rounded-xl px-3 py-2 shadow-lg w-full transform scale-105 transition-all">
+                            <button type="button" onclick="decrementCart('${prodId}')" class="px-2 font-black hover:bg-emerald-700 rounded-lg text-sm">-</button>
+                            <span class="font-black text-xs">${cart[prodId].qty}</span>
+                            <button type="button" onclick="addToCart('${prodId}', '${name.replace(/'/g, "\\'")}', ${price}, ${gst})" class="px-2 font-black hover:bg-emerald-700 rounded-lg text-sm">+</button>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = `
+                        <button type="button" onclick="addProdFromEl(this)" class="w-full bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 py-2 rounded-2xl text-xs font-black transition shadow-sm tracking-wider">
+                            ADD
+                        </button>
+                    `;
+                }
+            });
+
+            const container = document.getElementById('cart-items');
+            const floatingBar = document.getElementById('floating-cart-bar');
+            container.innerHTML = '';
+
+            for (let id in cart) {
+                let item = cart[id];
+                let itemTotal = (parseFloat(item.price) || 0) * (parseInt(item.qty) || 1);
+                let rate = parseFloat(item.gst) || 0;
+                let itemGst = rate > 0 ? (itemTotal * rate) / (100 + rate) : 0;
+                subtotal += itemTotal;
+                gstTotal += itemGst;
+                totalCount += item.qty;
+
+                container.innerHTML += `
+                    <div class="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs mb-2 shadow-sm">
+                        <div>
+                            <span class="font-bold text-slate-800 block">${item.name}</span>
+                            <span class="text-[10px] text-slate-500 font-medium">₹${item.price.toFixed(2)} x ${item.qty} (Incl. GST)</span>
+                        </div>
+                        <div class="flex items-center space-x-2 bg-emerald-600 text-white rounded-xl px-3 py-1 shadow">
+                            <button type="button" onclick="decrementCart('${id}')" class="font-bold px-1">-</button>
+                            <span class="font-bold text-xs">${item.qty}</span>
+                            <button type="button" onclick="addToCart('${id}', '${item.name.replace(/'/g, "\\'")}', ${item.price}, ${item.gst})" class="font-bold px-1">+</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            let grandTotal = subtotal;
+            document.getElementById('subtotal-display').innerText = '₹' + subtotal.toFixed(2);
+            document.getElementById('gst-display').innerText = '₹' + gstTotal.toFixed(2);
+            document.getElementById('grand-total-display').innerText = '₹' + grandTotal.toFixed(2);
+            document.getElementById('basket-count').innerText = totalCount + ' Items';
+            document.getElementById('cart_data_input').value = JSON.stringify(cart);
+
+            if (totalCount === 0) {
+                if(floatingBar) floatingBar.classList.add('translate-y-32', 'opacity-0');
+            } else {
+                if(floatingBar) {
+                    floatingBar.classList.remove('translate-y-32', 'opacity-0');
+                    document.getElementById('floating-item-count').innerText = totalCount + (totalCount === 1 ? ' item' : ' items');
+                    document.getElementById('floating-total-amt').innerText = '₹' + grandTotal.toFixed(2);
+                }
+            }
+        }
+
+        function filterCategory(cat, btn) {
+            document.querySelectorAll('.cat-btn').forEach(b => {
+                b.classList.remove('bg-emerald-600', 'text-white', 'shadow-md');
+                b.classList.add('bg-white', 'border-slate-200', 'text-slate-700', 'hover:bg-slate-50');
+            });
+            btn.classList.remove('bg-white', 'border-slate-200', 'text-slate-700', 'hover:bg-slate-50');
+            btn.classList.add('bg-emerald-600', 'text-white', 'shadow-md');
+
+            const cards = document.getElementsByClassName('product-card');
+            for (let card of cards) {
+                if (cat === 'All' || card.getAttribute('data-category') === cat) {
+                    card.style.display = 'flex';
+                } else {
+                    card.style.display = 'none';
+                }
+            }
+        }
+
+        function searchProducts() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            const cards = document.getElementsByClassName('product-card');
+            for (let card of cards) {
+                const name = card.getAttribute('data-name').toLowerCase();
+                if (name.includes(query)) {
+                    card.style.display = 'flex';
+                } else {
+                    card.style.display = 'none';
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-100 font-sans pb-32 md:pb-16 text-slate-900">
+    <!-- Top Navbar -->
+    <header class="bg-white/90 backdrop-blur-md shadow-xs sticky top-0 z-40 px-4 md:px-8 py-3.5 flex flex-col md:flex-row justify-between items-center border-b border-slate-200 gap-3">
+        <div class="flex justify-between items-center w-full md:w-auto">
+            <a href="/" class="text-2xl font-black italic tracking-tighter text-amber-500">Swaraj Grocery's</a>
+            <div onclick="toggleCartDrawer()" class="hidden md:flex flex-col border-l pl-4 border-slate-200 cursor-pointer">
+                <span id="header-delivery-city" class="text-xs font-black text-slate-800 uppercase tracking-wide">Home Delivery in Katol</span>
+                <span id="header-delivery-area" class="text-[11px] text-slate-500 font-medium">Ambedkar Chowk ▾</span>
+            </div>
+            <a href="/admin_login" class="md:hidden text-xs font-bold text-slate-600 hover:text-emerald-600 transition">Admin Login</a>
+        </div>
+        <div class="w-full md:flex-1 md:max-w-xl md:mx-6">
+            <div class="relative">
+                <span class="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400">🔍</span>
+                <input type="text" id="search-input" onkeyup="searchProducts()" placeholder="Search 'atta', 'sugar', 'oil', 'dal'..." class="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 focus:border-emerald-500 focus:bg-white rounded-2xl text-xs outline-none transition shadow-inner">
+            </div>
+        </div>
+        <div class="hidden md:flex items-center space-x-4">
+            <a href="/admin_login" class="text-xs font-bold text-slate-600 hover:text-emerald-600 transition">Admin Login</a>
+            <button type="button" onclick="toggleCartDrawer()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl font-bold text-xs flex items-center space-x-2 shadow-md transition transform active:scale-95">
+                <span>🛒 My Basket</span>
+                <span id="basket-count" class="bg-emerald-800 px-2 py-0.5 rounded-lg text-[10px] font-mono">0 Items</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 md:px-8 py-4 md:py-6">
+        <!-- Hero Banner -->
+        <div class="bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 rounded-3xl p-6 md:p-8 text-white shadow-xl mb-6 flex justify-between items-center relative overflow-hidden">
+            <div class="max-w-xl z-10">
+                <span class="bg-emerald-800/80 backdrop-blur-sm text-emerald-100 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider border border-emerald-500/30">Fresh Daily Essentials</span>
+                <h1 class="text-2xl md:text-4xl font-black mt-2 tracking-tight">Quality groceries at your doorstep.</h1>
+                <p class="text-xs md:text-sm text-emerald-100 mt-1.5 font-medium opacity-90">Fresh quality daily essentials delivered straight to your home in Katol.</p>
+            </div>
+            <div class="hidden md:block text-7xl opacity-90 select-none drop-shadow-lg">🛒</div>
+        </div>
+
+        <!-- Categories Bar -->
+        <div class="flex gap-2.5 overflow-x-auto pb-3 mb-6 no-scrollbar">
+            <button type="button" onclick="filterCategory('All', this)" class="cat-btn px-4 py-2 bg-emerald-600 text-white rounded-2xl text-xs font-bold whitespace-nowrap shadow-md transition">🌿 All Items</button>
+            <button type="button" onclick="filterCategory('Grains & Flour', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🌾 Grains & Flour</button>
+            <button type="button" onclick="filterCategory('Essentials', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🧂 Essentials</button>
+            <button type="button" onclick="filterCategory('Oils & Ghee', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🌻 Oils & Ghee</button>
+            <button type="button" onclick="filterCategory('Pulses & Dal', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🫘 Pulses & Dal</button>
+            <button type="button" onclick="filterCategory('Beverages', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">☕ Beverages</button>
+            <button type="button" onclick="filterCategory('Cosmetics', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">💄 Cosmetics</button>
+        </div>
+
+        <!-- Product Grid -->
+        <div class="w-full">
+            <h2 class="text-base font-extrabold text-slate-800 mb-4 tracking-tight">Explore Products</h2>
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+                {% for p in products %}
+                <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-emerald-300 transition duration-300" data-category="{{ p[9] }}" data-name="{{ p[2] }}">
+                    <div>
+                        <div class="h-32 md:h-36 bg-slate-50 rounded-2xl mb-3 overflow-hidden flex items-center justify-center border border-slate-100 p-2 relative shadow-inner">
+                            {% if p[10] %}
+                            <img src="{{ p[10] }}" alt="{{ p[2] }}" class="w-full h-full object-contain transform hover:scale-105 transition duration-300">
+                            {% else %}
+                            <span class="text-3xl">📦</span>
+                            {% endif %}
+                        </div>
+                        <span class="text-[9px] bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-md font-extrabold uppercase tracking-wider">{{ p[9] }}</span>
+                        <h3 class="font-bold text-xs text-slate-900 mt-1.5 line-clamp-2 leading-relaxed">{{ p[2] }}</h3>
+                        <p class="text-[10px] text-slate-400 mt-0.5 font-medium">Stock: {{ p[4] }}</p>
+                    </div>
+                    <div class="mt-4 flex items-center justify-between pt-2 border-t border-slate-100">
+                        <div>
+                            <span class="text-[10px] text-slate-400 block leading-none font-medium">Price</span>
+                            <span class="text-emerald-700 font-black text-sm">₹{{ p[3] }}</span>
+                        </div>
+                        <div class="w-24 product-action-container" data-id="{{ p[0] }}" data-name="{{ p[2] | e }}" data-price="{{ p[3] }}" data-gst="{{ p[5] }}">
+                            <button type="button" onclick="addProdFromEl(this)" class="w-full bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 py-2 rounded-2xl text-xs font-black transition shadow-sm tracking-wide">
+                                ADD
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </main>
+
+    <!-- Slide-Over Cart Drawer -->
+    <div id="drawer-backdrop" onclick="toggleCartDrawer()" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 transition-opacity"></div>
+    <div id="cart-drawer" class="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col justify-between p-6 border-l border-slate-200 overflow-y-auto">
+        <div>
+            <div class="flex justify-between items-center border-b border-slate-100 pb-4 mb-4">
+                <h2 class="text-lg font-black text-slate-800">🛒 My Basket</h2>
+                <button type="button" onclick="toggleCartDrawer()" class="text-slate-400 hover:text-slate-700 font-bold text-lg bg-slate-100 hover:bg-slate-200 w-8 h-8 rounded-full flex items-center justify-center transition">✕</button>
+            </div>
+            <div id="cart-items" class="overflow-y-auto max-h-[28vh] space-y-2 pr-1">
+                <p class="text-slate-400 text-center text-xs py-6 font-medium">Your basket is empty.</p>
+            </div>
+        </div>
+        <div class="border-t border-slate-100 pt-4 space-y-2.5 mt-4 bg-white">
+            <div class="flex justify-between text-slate-600 text-xs font-medium">
+                <span>Subtotal:</span>
+                <span id="subtotal-display" class="font-bold text-slate-800">₹0.00</span>
+            </div>
+            <div class="flex justify-between text-slate-600 text-xs font-medium">
+                <span>GST Included (in prices):</span>
+                <span id="gst-display" class="font-bold text-slate-800">₹0.00</span>
+            </div>
+            <div class="flex justify-between text-sm font-black text-slate-900 border-t border-slate-100 pt-2.5">
+                <span>Grand Total:</span>
+                <span id="grand-total-display" class="text-emerald-600 font-extrabold text-base">₹0.00</span>
+            </div>
+            <form action="/online_checkout" method="POST" onsubmit="document.getElementById('cart_data_input').value = JSON.stringify(cart);" class="space-y-2.5 mt-3">
+                <input type="hidden" name="cart_data" id="cart_data_input">
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-700 mb-1">Your Full Name:</label>
+                    <input type="text" name="customer_name" placeholder="Enter name" required class="w-full p-2.5 border border-slate-200 rounded-2xl text-xs bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-700 mb-1">WhatsApp / Phone Number:</label>
+                    <input type="text" name="customer_phone" placeholder="10-digit number" required class="w-full p-2.5 border border-slate-200 rounded-2xl text-xs bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition">
+                </div>
+
+                <!-- Delivery Location Bar -->
+                <div class="pt-2 border-t border-slate-200 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-extrabold text-slate-800">📍 Delivery Location</span>
+                        <span class="text-[10px] text-emerald-700 font-bold">Doorstep Delivery</span>
+                    </div>
+
+                    <div>
+                        <label for="area_input" class="block text-[10px] font-bold text-slate-700 mb-0.5">Area*</label>
+                        <input type="text" id="area_input" name="area" required oninput="syncHeaderLocation()" placeholder="e.g., Ambedkar Chowk" class="w-full p-2 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition">
+                    </div>
+
+                    <div>
+                        <label for="house_no_input" class="block text-[10px] font-bold text-slate-700 mb-0.5">House Number / Tower / Block*</label>
+                        <input type="text" id="house_no_input" name="house_no" required placeholder="e.g., Jaising Lay Out" class="w-full p-2 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition">
+                        <p class="text-[10px] text-amber-600 font-semibold mt-0.5">*House Number will allow a doorstep delivery</p>
+                    </div>
+
+                    <div>
+                        <label for="locality_town_input" class="block text-[10px] font-bold text-slate-700 mb-0.5">Locality / Town*</label>
+                        <input type="text" id="locality_town_input" name="locality_town" value="Katol" required oninput="syncHeaderLocation()" class="w-full p-2 border border-slate-200 rounded-xl text-xs bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-slate-700 mb-1">Payment Method:</label>
+                    <select name="payment_mode" required class="w-full p-2.5 border border-slate-200 rounded-2xl text-xs bg-slate-50 font-semibold focus:bg-white focus:border-emerald-500 outline-none transition">
+                        <option value="Online UPI">📱 Online UPI / QR</option>
+                        <option value="Cash">💵 Cash on Delivery (COD)</option>
+                    </select>
+                </div>
+                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 rounded-2xl font-black text-xs transition shadow-lg transform active:scale-95 tracking-wide">
+                    🚀 Place Order & Generate Tax Invoice
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Stylish Dynamic Floating Bottom Bar (Grey Pill) -->
+    <div id="floating-cart-bar" class="translate-y-32 opacity-0 fixed bottom-6 left-4 right-4 md:left-auto md:right-8 md:w-96 bg-zinc-800/95 backdrop-blur-md text-white p-4 shadow-2xl z-40 flex justify-between items-center rounded-3xl border border-zinc-700 transition-all duration-300 ease-in-out">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-emerald-600 rounded-2xl flex items-center justify-center font-black shadow-md">🛒</div>
+            <div>
+                <span id="floating-item-count" class="text-xs font-bold text-emerald-400 block leading-none">0 items</span>
+                <span id="floating-total-amt" class="text-sm font-black tracking-wide mt-0.5 block">₹0.00</span>
+            </div>
+        </div>
+        <button type="button" onclick="toggleCartDrawer()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl font-black text-xs shadow-md transition transform active:scale-95 tracking-wide">
+            View Cart →
+        </button>
+    </div>
+</body>
+</html>
