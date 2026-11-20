@@ -8,6 +8,8 @@ customer_bp = Blueprint("customer", __name__)
 
 def _ensure_storefront_columns(cursor, conn):
   for col_sql in [
+      "ALTER TABLE products ADD COLUMN pack_size TEXT DEFAULT ''",
+      "ALTER TABLE products ADD COLUMN mrp REAL DEFAULT 0.0",
       "ALTER TABLE products ADD COLUMN is_online INTEGER DEFAULT 1",
       "ALTER TABLE products ADD COLUMN is_active INTEGER DEFAULT 1",
       "ALTER TABLE bills ADD COLUMN delivery_address TEXT DEFAULT ''",
@@ -20,6 +22,14 @@ def _ensure_storefront_columns(cursor, conn):
     except sqlite3.OperationalError:
       pass
 
+  try:
+    cursor.execute(
+        "UPDATE products SET mrp = price WHERE mrp IS NULL OR mrp <= 0"
+    )
+    conn.commit()
+  except sqlite3.OperationalError:
+    pass
+
 
 @customer_bp.route("/")
 def customer_shop():
@@ -28,10 +38,11 @@ def customer_shop():
   cursor = conn.cursor()
   _ensure_storefront_columns(cursor, conn)
 
-  # Query including image_url for the online storefront display, filtered by Item Master flags
+  # Query including pack_size, mrp, and image_url for the online storefront display
   cursor.execute(
-      "SELECT id, barcode, name, price, stock, gst_rate, batch_no,"
-      " expiry_date, rack_location, category, image_url FROM products"
+      "SELECT id, barcode, name, pack_size, mrp, price, stock, gst_rate,"
+      " batch_no, expiry_date, rack_location, category, image_url"
+      " FROM products"
       " WHERE stock > 0"
       " AND COALESCE(is_active, 1) = 1"
       " AND COALESCE(is_online, 1) = 1"

@@ -217,25 +217,47 @@
             <h2 class="text-base font-extrabold text-slate-800 mb-4 tracking-tight">Explore Products</h2>
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
                 {% for p in products %}
-                <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-emerald-300 transition duration-300" data-category="{{ p[9] }}" data-name="{{ p[2] }}">
+                {% set pack_size = p[3] or '' %}
+                {% set mrp_val = (p[4] or 0.0)|float %}
+                {% set sell_val = (p[5] or 0.0)|float %}
+                {% set savings_val = mrp_val - sell_val %}
+                <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-emerald-300 transition duration-300" data-category="{{ p[11] }}" data-name="{{ p[2] }}">
                     <div>
                         <div class="h-32 md:h-36 bg-slate-50 rounded-2xl mb-3 overflow-hidden flex items-center justify-center border border-slate-100 p-2 relative shadow-inner">
-                            {% if p[10] %}
-                            <img src="{{ p[10] }}" alt="{{ p[2] }}" class="w-full h-full object-contain transform hover:scale-105 transition duration-300">
+                            {% if p[12] %}
+                            <img src="{{ p[12] }}" alt="{{ p[2] }}" class="w-full h-full object-contain transform hover:scale-105 transition duration-300">
                             {% else %}
                             <span class="text-3xl">📦</span>
                             {% endif %}
+                            {% if savings_val > 0 %}
+                            <span class="absolute top-2 left-2 bg-emerald-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow">
+                                Save ₹{{ "%.0f"|format(savings_val) }}
+                            </span>
+                            {% endif %}
                         </div>
-                        <span class="text-[9px] bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-md font-extrabold uppercase tracking-wider">{{ p[9] }}</span>
+                        <span class="text-[9px] bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-md font-extrabold uppercase tracking-wider">{{ p[11] }}</span>
                         <h3 class="font-bold text-xs text-slate-900 mt-1.5 line-clamp-2 leading-relaxed">{{ p[2] }}</h3>
-                        <p class="text-[10px] text-slate-400 mt-0.5 font-medium">Stock: {{ p[4] }}</p>
+                        <div class="flex items-center justify-between gap-1 mt-1">
+                            {% if pack_size %}
+                            <span class="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">{{ pack_size }}</span>
+                            {% else %}
+                            <span class="text-[10px] text-slate-400 font-medium">Stock: {{ p[6] }}</span>
+                            {% endif %}
+                            {% if pack_size %}
+                            <span class="text-[10px] text-slate-400 font-medium">Stock: {{ p[6] }}</span>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="mt-4 flex items-center justify-between pt-2 border-t border-slate-100">
                         <div>
+                            {% if mrp_val > sell_val %}
+                            <span class="text-[10px] text-slate-400 line-through block leading-none font-medium">MRP ₹{{ "%.2f"|format(mrp_val) }}</span>
+                            {% else %}
                             <span class="text-[10px] text-slate-400 block leading-none font-medium">Price</span>
-                            <span class="text-emerald-700 font-black text-sm">₹{{ p[3] }}</span>
+                            {% endif %}
+                            <span class="text-emerald-700 font-black text-sm">₹{{ "%.2f"|format(sell_val) }}</span>
                         </div>
-                        <div class="w-24 product-action-container" data-id="{{ p[0] }}" data-name="{{ p[2] | e }}" data-price="{{ p[3] }}" data-gst="{{ p[5] }}">
+                        <div class="w-24 product-action-container" data-id="{{ p[0] }}" data-name="{{ p[2] | e }}" data-price="{{ p[5] }}" data-gst="{{ p[7] }}">
                             <button type="button" onclick="addProdFromEl(this)" class="w-full bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 py-2 rounded-2xl text-xs font-black transition shadow-sm tracking-wide">
                                 ADD
                             </button>
