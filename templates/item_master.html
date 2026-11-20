@@ -175,7 +175,33 @@
                                 </span>
                                 {% else %}
                                 <span class="text-slate-400 font-medium block">Cost ₹0.00</span>
-                                <button type="button" onclick='openEditModal({{ item | tojson | safe }})' class="text-[10px] font-bold text-amber-600 hover:underline">+ Set cost & markup</button>
+                                <button type="button"
+                                        data-item-id="{{ item.id }}"
+                                        data-sku="{{ item.sku_code }}"
+                                        data-barcode="{{ item.barcode }}"
+                                        data-brand="{{ item.brand }}"
+                                        data-name="{{ item.name }}"
+                                        data-pack="{{ item.pack_size }}"
+                                        data-supplier="{{ item.supplier_name }}"
+                                        data-category="{{ item.category }}"
+                                        data-unit="{{ item.unit }}"
+                                        data-mrp="{{ item.mrp }}"
+                                        data-price="{{ item.price }}"
+                                        data-cost="{{ item.cost_price }}"
+                                        data-gst="{{ item.gst_rate }}"
+                                        data-hsn="{{ item.hsn_code }}"
+                                        data-stock="{{ item.stock }}"
+                                        data-reorder="{{ item.reorder_level }}"
+                                        data-rack="{{ item.rack_location }}"
+                                        data-batch="{{ item.batch_no }}"
+                                        data-expiry="{{ item.expiry_date }}"
+                                        data-image="{{ item.image_url }}"
+                                        data-online="{{ item.is_online }}"
+                                        data-active="{{ item.is_active }}"
+                                        data-base-id="{{ item.base_product_id or '' }}"
+                                        data-weight-kg="{{ item.weight_kg or 1.0 }}"
+                                        onclick="openEditFromBtn(this)"
+                                        class="text-[10px] font-bold text-amber-600 hover:underline">+ Set cost & markup</button>
                                 {% endif %}
                             </td>
                             <td class="py-3 px-3.5 text-right whitespace-nowrap">
@@ -206,10 +232,63 @@
                             </td>
                             <td class="py-3 px-3.5 text-center whitespace-nowrap">
                                 <div class="inline-flex items-center gap-1">
-                                    <button type="button" onclick='openVariantModal({{ item | tojson | safe }})' title="Add another pack size variant (e.g. 500g, 250g, 2kg, 5kg)" class="bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 px-2 py-1.5 rounded-lg font-bold text-[11px] transition">
+                                    <button type="button"
+                                            data-item-id="{{ item.id }}"
+                                            data-sku="{{ item.sku_code }}"
+                                            data-barcode="{{ item.barcode }}"
+                                            data-brand="{{ item.brand }}"
+                                            data-name="{{ item.name }}"
+                                            data-pack="{{ item.pack_size }}"
+                                            data-supplier="{{ item.supplier_name }}"
+                                            data-category="{{ item.category }}"
+                                            data-unit="{{ item.unit }}"
+                                            data-mrp="{{ item.mrp }}"
+                                            data-price="{{ item.price }}"
+                                            data-cost="{{ item.cost_price }}"
+                                            data-gst="{{ item.gst_rate }}"
+                                            data-hsn="{{ item.hsn_code }}"
+                                            data-stock="{{ item.stock }}"
+                                            data-reorder="{{ item.reorder_level }}"
+                                            data-rack="{{ item.rack_location }}"
+                                            data-batch="{{ item.batch_no }}"
+                                            data-expiry="{{ item.expiry_date }}"
+                                            data-image="{{ item.image_url }}"
+                                            data-online="{{ item.is_online }}"
+                                            data-active="{{ item.is_active }}"
+                                            data-base-id="{{ item.base_product_id or '' }}"
+                                            data-weight-kg="{{ item.weight_kg or 1.0 }}"
+                                            onclick="openVariantFromBtn(this)"
+                                            title="Add another pack size variant (e.g. 500g, 250g, 2kg, 5kg)"
+                                            class="bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 px-2 py-1.5 rounded-lg font-bold text-[11px] transition">
                                         ➕ Variant
                                     </button>
-                                    <button type="button" onclick='openEditModal({{ item | tojson | safe }})' class="bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition">
+                                    <button type="button"
+                                            data-item-id="{{ item.id }}"
+                                            data-sku="{{ item.sku_code }}"
+                                            data-barcode="{{ item.barcode }}"
+                                            data-brand="{{ item.brand }}"
+                                            data-name="{{ item.name }}"
+                                            data-pack="{{ item.pack_size }}"
+                                            data-supplier="{{ item.supplier_name }}"
+                                            data-category="{{ item.category }}"
+                                            data-unit="{{ item.unit }}"
+                                            data-mrp="{{ item.mrp }}"
+                                            data-price="{{ item.price }}"
+                                            data-cost="{{ item.cost_price }}"
+                                            data-gst="{{ item.gst_rate }}"
+                                            data-hsn="{{ item.hsn_code }}"
+                                            data-stock="{{ item.stock }}"
+                                            data-reorder="{{ item.reorder_level }}"
+                                            data-rack="{{ item.rack_location }}"
+                                            data-batch="{{ item.batch_no }}"
+                                            data-expiry="{{ item.expiry_date }}"
+                                            data-image="{{ item.image_url }}"
+                                            data-online="{{ item.is_online }}"
+                                            data-active="{{ item.is_active }}"
+                                            data-base-id="{{ item.base_product_id or '' }}"
+                                            data-weight-kg="{{ item.weight_kg or 1.0 }}"
+                                            onclick="openEditFromBtn(this)"
+                                            class="bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition">
                                         ✏️ Edit
                                     </button>
                                     <form action="/item_master" method="POST" onsubmit="return confirm('Delete {{ item.name }} from Item Master?');" class="inline">
@@ -438,6 +517,43 @@
 
     <script>
         let activeBaseItem = null;
+
+        function extractItemFromBtn(btn) {
+            return {
+                id: parseInt(btn.getAttribute('data-item-id') || '0', 10),
+                sku_code: btn.getAttribute('data-sku') || '',
+                barcode: btn.getAttribute('data-barcode') || '',
+                brand: btn.getAttribute('data-brand') || '',
+                name: btn.getAttribute('data-name') || '',
+                pack_size: btn.getAttribute('data-pack') || '',
+                supplier_name: btn.getAttribute('data-supplier') || '',
+                category: btn.getAttribute('data-category') || 'Essentials',
+                unit: btn.getAttribute('data-unit') || 'pcs',
+                mrp: parseFloat(btn.getAttribute('data-mrp') || '0') || 0,
+                price: parseFloat(btn.getAttribute('data-price') || '0') || 0,
+                cost_price: parseFloat(btn.getAttribute('data-cost') || '0') || 0,
+                gst_rate: parseFloat(btn.getAttribute('data-gst') || '5') || 5,
+                hsn_code: btn.getAttribute('data-hsn') || '',
+                stock: parseInt(btn.getAttribute('data-stock') || '0', 10) || 0,
+                reorder_level: parseInt(btn.getAttribute('data-reorder') || '15', 10) || 15,
+                rack_location: btn.getAttribute('data-rack') || 'Rack-1 Shelf A',
+                batch_no: btn.getAttribute('data-batch') || 'GENERAL',
+                expiry_date: btn.getAttribute('data-expiry') || '2027-12-31',
+                image_url: btn.getAttribute('data-image') || '',
+                is_online: parseInt(btn.getAttribute('data-online') || '1', 10),
+                is_active: parseInt(btn.getAttribute('data-active') || '1', 10),
+                base_product_id: btn.getAttribute('data-base-id') || '',
+                weight_kg: parseFloat(btn.getAttribute('data-weight-kg') || '1.0') || 1.0
+            };
+        }
+
+        function openVariantFromBtn(btn) {
+            openVariantModal(extractItemFromBtn(btn));
+        }
+
+        function openEditFromBtn(btn) {
+            openEditModal(extractItemFromBtn(btn));
+        }
 
         function updateProfitPreview() {
             const cost = parseFloat(document.getElementById('f-cost').value) || 0;
