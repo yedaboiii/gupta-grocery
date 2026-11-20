@@ -34,6 +34,8 @@ def _ensure_item_master_columns(cursor, conn):
     migrations = [
         "ALTER TABLE products ADD COLUMN sku_code TEXT DEFAULT ''",
         "ALTER TABLE products ADD COLUMN brand TEXT DEFAULT ''",
+        "ALTER TABLE products ADD COLUMN pack_size TEXT DEFAULT ''",
+        "ALTER TABLE products ADD COLUMN supplier_name TEXT DEFAULT ''",
         "ALTER TABLE products ADD COLUMN unit TEXT DEFAULT 'pcs'",
         "ALTER TABLE products ADD COLUMN mrp REAL DEFAULT 0.0",
         "ALTER TABLE products ADD COLUMN cost_price REAL DEFAULT 0.0",
@@ -172,6 +174,8 @@ def item_master():
                 sku_code = (request.form.get("sku_code") or "").strip()
                 name = (request.form.get("name") or "").strip()
                 brand = (request.form.get("brand") or "").strip()
+                pack_size = (request.form.get("pack_size") or "").strip()
+                supplier_name = (request.form.get("supplier_name") or "").strip()
                 category = (request.form.get("category") or "Essentials").strip()
                 unit = (request.form.get("unit") or "pcs").strip()
                 mrp = float(request.form.get("mrp") or 0.0)
@@ -193,15 +197,15 @@ def item_master():
 
                 cursor.execute("""
                     INSERT INTO products (
-                        barcode, sku_code, name, brand, category, unit,
-                        mrp, price, cost_price, gst_rate, hsn_code,
+                        barcode, sku_code, name, brand, pack_size, supplier_name,
+                        category, unit, mrp, price, cost_price, gst_rate, hsn_code,
                         stock, reorder_level, batch_no, expiry_date, rack_location,
                         image_url, is_online, is_active
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    barcode, sku_code, name, brand, category, unit,
-                    mrp, price, cost_price, gst_rate, hsn_code,
+                    barcode, sku_code, name, brand, pack_size, supplier_name,
+                    category, unit, mrp, price, cost_price, gst_rate, hsn_code,
                     stock, reorder_level, batch_no, expiry_date, rack_location,
                     image_url, is_online, is_active
                 ))
@@ -217,6 +221,8 @@ def item_master():
                 sku_code = (request.form.get("sku_code") or "").strip() or f"SG-{prod_id:04d}"
                 name = (request.form.get("name") or "").strip()
                 brand = (request.form.get("brand") or "").strip()
+                pack_size = (request.form.get("pack_size") or "").strip()
+                supplier_name = (request.form.get("supplier_name") or "").strip()
                 category = (request.form.get("category") or "Essentials").strip()
                 unit = (request.form.get("unit") or "pcs").strip()
                 mrp = float(request.form.get("mrp") or 0.0)
@@ -238,14 +244,14 @@ def item_master():
 
                 cursor.execute("""
                     UPDATE products
-                    SET barcode = ?, sku_code = ?, name = ?, brand = ?, category = ?, unit = ?,
-                        mrp = ?, price = ?, cost_price = ?, gst_rate = ?, hsn_code = ?,
+                    SET barcode = ?, sku_code = ?, name = ?, brand = ?, pack_size = ?, supplier_name = ?,
+                        category = ?, unit = ?, mrp = ?, price = ?, cost_price = ?, gst_rate = ?, hsn_code = ?,
                         stock = ?, reorder_level = ?, batch_no = ?, expiry_date = ?, rack_location = ?,
                         image_url = ?, is_online = ?, is_active = ?
                     WHERE id = ?
                 """, (
-                    barcode, sku_code, name, brand, category, unit,
-                    mrp, price, cost_price, gst_rate, hsn_code,
+                    barcode, sku_code, name, brand, pack_size, supplier_name,
+                    category, unit, mrp, price, cost_price, gst_rate, hsn_code,
                     stock, reorder_level, batch_no, expiry_date, rack_location,
                     image_url, is_online, is_active, prod_id
                 ))
@@ -264,7 +270,6 @@ def item_master():
         conn.close()
         return redirect(url_for("admin.item_master"))
 
-    # Fetch sold quantities per item_name to track cumulative profit on sold units
     sold_map = {}
     try:
         cursor.execute("SELECT LOWER(TRIM(item_name)) AS key_name, SUM(qty) AS sold_qty, SUM(total) AS sold_rev FROM bill_items GROUP BY LOWER(TRIM(item_name))")
@@ -310,6 +315,8 @@ def item_master():
         d["earned_profit"] = earned_profit
         d["sku_code"] = d.get("sku_code") or f"SG-{d['id']:04d}"
         d["brand"] = d.get("brand") or ""
+        d["pack_size"] = d.get("pack_size") or ""
+        d["supplier_name"] = d.get("supplier_name") or ""
         d["unit"] = d.get("unit") or "pcs"
         d["hsn_code"] = d.get("hsn_code") or ""
         d["reorder_level"] = int(d.get("reorder_level") if d.get("reorder_level") is not None else 15)
@@ -353,8 +360,8 @@ def export_item_master_csv():
     output = io.StringIO()
     writer = csv.writer(output)
     headers = [
-        "id", "sku_code", "barcode", "name", "brand", "category", "unit",
-        "mrp", "price", "cost_price", "gst_rate", "hsn_code",
+        "id", "sku_code", "barcode", "name", "brand", "pack_size", "supplier_name",
+        "category", "unit", "mrp", "price", "cost_price", "gst_rate", "hsn_code",
         "stock", "reorder_level", "batch_no", "expiry_date", "rack_location",
         "is_online", "is_active", "image_url"
     ]
@@ -394,6 +401,8 @@ def import_item_master_csv():
             barcode = (row.get("barcode") or "").strip()
             sku_code = (row.get("sku_code") or "").strip()
             brand = (row.get("brand") or "").strip()
+            pack_size = (row.get("pack_size") or "").strip()
+            supplier_name = (row.get("supplier_name") or "").strip()
             category = (row.get("category") or "Essentials").strip()
             unit = (row.get("unit") or "pcs").strip()
             price = float(row.get("price") or 0.0)
@@ -421,30 +430,32 @@ def import_item_master_csv():
             if existing:
                 cursor.execute("""
                     UPDATE products
-                    SET name = ?, brand = ?, category = ?, unit = ?,
-                        mrp = ?, price = ?, cost_price = ?, gst_rate = ?, hsn_code = ?,
-                        stock = ?, reorder_level = ?, batch_no = ?, expiry_date = ?, rack_location = ?,
+                    SET name = ?, brand = ?, pack_size = ?, supplier_name = ?,
+                        category = ?, unit = ?, mrp = ?, price = ?, cost_price = ?,
+                        gst_rate = ?, hsn_code = ?, stock = ?, reorder_level = ?,
+                        batch_no = ?, expiry_date = ?, rack_location = ?,
                         is_online = ?, is_active = ?, image_url = COALESCE(NULLIF(?, ''), image_url)
                     WHERE id = ?
                 """, (
-                    name, brand, category, unit,
-                    mrp, price, cost_price, gst_rate, hsn_code,
-                    stock, reorder_level, batch_no, expiry_date, rack_location,
+                    name, brand, pack_size, supplier_name,
+                    category, unit, mrp, price, cost_price,
+                    gst_rate, hsn_code, stock, reorder_level,
+                    batch_no, expiry_date, rack_location,
                     is_online, is_active, image_url, existing[0]
                 ))
                 updated_count += 1
             else:
                 cursor.execute("""
                     INSERT INTO products (
-                        barcode, sku_code, name, brand, category, unit,
-                        mrp, price, cost_price, gst_rate, hsn_code,
+                        barcode, sku_code, name, brand, pack_size, supplier_name,
+                        category, unit, mrp, price, cost_price, gst_rate, hsn_code,
                         stock, reorder_level, batch_no, expiry_date, rack_location,
                         is_online, is_active, image_url
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    barcode, sku_code, name, brand, category, unit,
-                    mrp, price, cost_price, gst_rate, hsn_code,
+                    barcode, sku_code, name, brand, pack_size, supplier_name,
+                    category, unit, mrp, price, cost_price, gst_rate, hsn_code,
                     stock, reorder_level, batch_no, expiry_date, rack_location,
                     is_online, is_active, image_url
                 ))
@@ -644,7 +655,7 @@ def purchase_entry():
             cursor.execute("UPDATE products SET stock = stock + ? WHERE id = ?", (qty_added, product_id))
             if qty_added > 0 and total_amount > 0:
                 unit_cost = round(total_amount / qty_added, 2)
-                cursor.execute("UPDATE products SET cost_price = ? WHERE id = ?", (unit_cost, product_id))
+                cursor.execute("UPDATE products SET cost_price = ?, supplier_name = COALESCE(NULLIF(?, ''), supplier_name) WHERE id = ?", (unit_cost, supplier_name or "", product_id))
             conn.commit()
             flash("Purchase recorded, unit cost & inventory stock updated successfully!")
     cursor.execute("SELECT id, name, stock FROM products")

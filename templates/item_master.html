@@ -27,7 +27,7 @@
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b border-slate-200 pb-5 gap-4">
             <div>
                 <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">🗂️ Item Master (Central SKU Catalog)</h1>
-                <p class="text-xs text-slate-500 mt-1">Track cost price, +₹3/+₹4/+₹x rupee markup per unit, GST-inclusive margin, sold profit, and online store visibility.</p>
+                <p class="text-xs text-slate-500 mt-1">Track pack size, supplier, cost price, +₹3/+₹4/+₹x rupee markup, GST-inclusive margin, sold profit, and online store visibility.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <a href="/item_master/export_csv" class="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-3.5 py-2 rounded-xl text-xs font-bold transition">
@@ -78,7 +78,7 @@
         <!-- Search & Filter Controls -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
             <div class="md:col-span-2">
-                <input type="text" id="master-search" onkeyup="filterMasterTable()" placeholder="🔍 Search SKU, Barcode, Item Name, Brand, HSN..." class="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs outline-none focus:border-emerald-500">
+                <input type="text" id="master-search" onkeyup="filterMasterTable()" placeholder="🔍 Search SKU, Barcode, Item Name, Brand, Pack, Supplier, HSN..." class="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs outline-none focus:border-emerald-500">
             </div>
             <div>
                 <select id="filter-category" onchange="filterMasterTable()" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:border-emerald-500">
@@ -109,7 +109,7 @@
                     <thead>
                         <tr class="bg-slate-900 text-slate-200 text-[11px] uppercase tracking-wider">
                             <th class="py-3 px-3.5 font-bold">SKU / Barcode</th>
-                            <th class="py-3 px-3.5 font-bold">Item & Brand</th>
+                            <th class="py-3 px-3.5 font-bold">Item, Pack & Supplier</th>
                             <th class="py-3 px-3.5 font-bold">Category / Unit</th>
                             <th class="py-3 px-3.5 font-bold text-right">MRP / Sell</th>
                             <th class="py-3 px-3.5 font-bold text-right">Cost & +₹ Profit/Unit</th>
@@ -127,7 +127,7 @@
                         {% set u_sold = item.units_sold | default(0) %}
                         {% set e_profit = item.earned_profit | default(0.0) %}
                         <tr class="master-row hover:bg-slate-50 transition align-middle"
-                            data-search="{{ (item.sku_code ~ ' ' ~ item.barcode ~ ' ' ~ item.name ~ ' ' ~ item.brand ~ ' ' ~ item.hsn_code)|lower }}"
+                            data-search="{{ (item.sku_code ~ ' ' ~ item.barcode ~ ' ' ~ item.name ~ ' ' ~ item.brand ~ ' ' ~ item.pack_size ~ ' ' ~ item.supplier_name ~ ' ' ~ item.hsn_code)|lower }}"
                             data-category="{{ item.category }}"
                             data-online="{{ item.is_online }}"
                             data-active="{{ item.is_active }}">
@@ -135,7 +135,7 @@
                                 <span class="font-mono font-extrabold text-emerald-700 block">{{ item.sku_code }}</span>
                                 <span class="font-mono text-[11px] text-slate-500">{{ item.barcode or 'No Barcode' }}</span>
                             </td>
-                            <td class="py-3 px-3.5 min-w-[190px]">
+                            <td class="py-3 px-3.5 min-w-[205px]">
                                 <div class="flex items-center gap-2.5">
                                     {% if item.image_url %}
                                     <img src="{{ item.image_url }}" alt="{{ item.name }}" class="w-9 h-9 rounded-lg object-contain border border-slate-200 bg-slate-50 p-0.5 shrink-0">
@@ -143,8 +143,16 @@
                                     <div class="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-sm shrink-0">📦</div>
                                     {% endif %}
                                     <div>
-                                        <div class="font-bold text-slate-900">{{ item.name }}</div>
+                                        <div class="font-bold text-slate-900">
+                                            {{ item.name }}
+                                            {% if item.pack_size %}
+                                            <span class="ml-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-extrabold">{{ item.pack_size }}</span>
+                                            {% endif %}
+                                        </div>
                                         <div class="text-[11px] text-slate-500">{{ item.brand or 'Generic' }} • {{ item.rack_location }}</div>
+                                        {% if item.supplier_name %}
+                                        <div class="text-[10px] text-indigo-700 font-semibold mt-0.5">🚚 {{ item.supplier_name }}</div>
+                                        {% endif %}
                                     </div>
                                 </div>
                             </td>
@@ -246,10 +254,14 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
                     <div class="sm:col-span-2">
                         <label class="block font-bold text-slate-700 mb-1">Item Name *</label>
-                        <input type="text" name="name" id="f-name" required placeholder="e.g. Aashirvaad Shudh Chakki Atta 5kg" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                        <input type="text" name="name" id="f-name" required placeholder="e.g. Aashirvaad Shudh Chakki Atta" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Pack Size</label>
+                        <input type="text" name="pack_size" id="f-pack" placeholder="e.g. 5kg, 1L, 500g" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">Category *</label>
@@ -326,7 +338,11 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Supplier Name</label>
+                        <input type="text" name="supplier_name" id="f-supplier" placeholder="e.g. Katol Traders" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">HSN Code</label>
                         <input type="text" name="hsn_code" id="f-hsn" placeholder="e.g. 1101" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
@@ -386,7 +402,7 @@
                 <h3 class="text-base font-black text-slate-900">📥 Bulk Import Item Master (CSV)</h3>
                 <button type="button" onclick="document.getElementById('csv-modal').classList.add('hidden')" class="w-7 h-7 rounded-full bg-slate-100 font-bold">✕</button>
             </div>
-            <p class="text-slate-600 leading-relaxed">Upload a CSV exported from Item Master (with columns: <code class="bg-slate-100 px-1 rounded">sku_code, barcode, name, brand, category, unit, mrp, price, cost_price, gst_rate, hsn_code, stock, reorder_level</code>). Existing barcodes/SKUs are updated automatically.</p>
+            <p class="text-slate-600 leading-relaxed">Upload a CSV exported from Item Master (with columns: <code class="bg-slate-100 px-1 rounded">sku_code, barcode, name, brand, pack_size, supplier_name, category, unit, mrp, price, cost_price, gst_rate, hsn_code, stock, reorder_level</code>). Existing barcodes/SKUs are updated automatically.</p>
             <form action="/item_master/import_csv" method="POST" enctype="multipart/form-data" class="space-y-3">
                 <input type="file" name="csv_file" accept=".csv" required class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50">
                 <div class="flex justify-end gap-2">
@@ -453,6 +469,8 @@
             document.getElementById('f-barcode').value = '';
             document.getElementById('f-brand').value = '';
             document.getElementById('f-name').value = '';
+            document.getElementById('f-pack').value = '';
+            document.getElementById('f-supplier').value = '';
             document.getElementById('f-category').value = 'Essentials';
             document.getElementById('f-unit').value = 'pcs';
             document.getElementById('f-mrp').value = '';
@@ -481,6 +499,8 @@
             document.getElementById('f-barcode').value = item.barcode || '';
             document.getElementById('f-brand').value = item.brand || '';
             document.getElementById('f-name').value = item.name || '';
+            document.getElementById('f-pack').value = item.pack_size || '';
+            document.getElementById('f-supplier').value = item.supplier_name || '';
             document.getElementById('f-category').value = item.category || 'Essentials';
             document.getElementById('f-unit').value = item.unit || 'pcs';
             document.getElementById('f-mrp').value = item.mrp || 0;
