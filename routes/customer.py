@@ -38,7 +38,6 @@ def customer_shop():
   cursor = conn.cursor()
   _ensure_storefront_columns(cursor, conn)
 
-  # Query including pack_size, mrp, and image_url for the online storefront display
   cursor.execute(
       "SELECT id, barcode, name, pack_size, mrp, price, stock, gst_rate,"
       " batch_no, expiry_date, rack_location, category, image_url"
@@ -46,10 +45,57 @@ def customer_shop():
       " WHERE stock > 0"
       " AND COALESCE(is_active, 1) = 1"
       " AND COALESCE(is_online, 1) = 1"
+      " ORDER BY id ASC"
   )
   products = cursor.fetchall()
   conn.close()
-  return render_template("customer_shop.html", products=products)
+
+  # Group products sharing the same item name into variant cards (e.g. 5kg, 1kg, 500g)
+  grouped_map = {}
+  grouped_products = []
+
+  for p in products:
+    base_name = (p["name"] or "").strip()
+    pack_size = (p["pack_size"] or "").strip()
+    mrp_val = float(p["mrp"] or p["price"] or 0.0)
+    sell_val = float(p["price"] or 0.0)
+    display_name = f"{base_name} ({pack_size})" if pack_size else base_name
+
+    variant_info = {
+        "id": p["id"],
+        "name": base_name,
+        "display_name": display_name,
+        "pack_size": pack_size or "Standard",
+        "has_pack": bool(pack_size),
+        "mrp": mrp_val,
+        "price": sell_val,
+        "savings": max(0.0, round(mrp_val - sell_val, 2)),
+        "stock": int(p["stock"] or 0),
+        "gst": float(p["gst_rate"] if p["gst_rate"] is not None else 5.0),
+        "category": p["category"] or "Essentials",
+        "image_url": p["image_url"] or "",
+    }
+
+    group_key = base_name.lower()
+    if group_key not in grouped_map:
+      group_entry = {
+          "name": base_name,
+          "category": variant_info["category"],
+          "image_url": variant_info["image_url"],
+          "variants": [variant_info],
+      }
+      grouped_map[group_key] = group_entry
+      grouped_products.append(group_entry)
+    else:
+      grouped_map[group_key]["variants"].append(variant_info)
+      if not grouped_map[group_key]["image_url"] and variant_info["image_url"]:
+        grouped_map[group_key]["image_url"] = variant_info["image_url"]
+
+  return render_template(
+      "customer_shop.html",
+      products=products,
+      grouped_products=grouped_products,
+  )
 
 
 @customer_bp.route("/online_checkout", methods=["POST"])
@@ -62,15 +108,7 @@ def online_checkout():
     house_no = (request.form.get("house_no") or "").strip()
     locality_town = (request.form.get("locality_town") or "Katol").strip()
 
-    address_parts = [
-        p
-        for p in [
-            house_no,
-            area,
-            locality_town,
-        ]
-        if p
-    ]
+    address_parts = [p for p in [house_no, area, locality_town] if p]
     delivery_address = ", ".join(address_parts)
 
     payment_mode = request.form.get("payment_mode", "Online UPI")
@@ -102,12 +140,14 @@ def online_checkout():
       qty = max(1, int(item.get("qty", 1)))
 
       cursor.execute(
-          "SELECT id, name, price, stock, gst_rate FROM products WHERE id = ?",
+          "SELECT id, name, pack_size, price, stock, gst_rate FROM products WHERE id = ?",
           (p_id,),
       )
       prod = cursor.fetchone()
       if prod:
-        _, name, price, stock, gst_rate = prod
+        _, raw_name, pack_size, price, stock, gst_rate = prod
+        pack_str = (pack_size or "").strip()
+        name = f"{raw_name} ({pack_str})" if pack_str and f"({pack_str})" not in raw_name else raw_name
         price = float(price or 0.0)
         gst_rate = float(gst_rate if gst_rate is not None else 5.0)
       else:
@@ -115,7 +155,6 @@ def online_checkout():
         price = float(item.get("price", 0.0) or 0.0)
         gst_rate = float(item.get("gst", 5.0) or 5.0)
 
-      # Prices are GST-inclusive: line total = price * qty, included GST = line_total * gst / (100 + gst)
       line_total = round(price * qty, 2)
       item_gst = round((line_total * gst_rate) / (100.0 + gst_rate), 2) if gst_rate > 0 else 0.0
 
@@ -209,7 +248,6 @@ def customer_receipt(bill_id):
   conn = sqlite3.connect("store_pos.db")
   cursor = conn.cursor()
 
-  # Fetch bill details in explicit column order so indices stay consistent even if older DBs had columns added via ALTER TABLE
   cursor.execute("""
       SELECT
           id, customer_name, customer_phone, items_summary,
@@ -226,9 +264,8 @@ def customer_receipt(bill_id):
     flash("❌ Invoice not found or order not placed yet!")
     return redirect(url_for("customer.customer_shop"))
 
-  # Cast bill numeric columns to float/int to prevent formatting TypeErrors
   bill = list(raw_bill)
-  for idx in [4, 5, 6, 7, 9, 10]:  # subtotal, discount, gst_amount, total_amount, cash_tendered, change_returned
+  for idx in [4, 5, 6, 7, 9, 10]:
     if idx < len(bill) and bill[idx] is not None:
       try:
         bill[idx] = float(bill[idx])
@@ -237,7 +274,6 @@ def customer_receipt(bill_id):
 
   delivery_address = (bill[13] or "").strip() if len(bill) > 13 and bill[13] else ""
 
-  # Fetch bill items and cast numeric fields
   cursor.execute(
       "SELECT item_name, price, qty, gst_rate, total FROM bill_items WHERE bill_id = ?",
       (bill_id,),
@@ -254,7 +290,6 @@ def customer_receipt(bill_id):
         float(item[4]) if len(item) > 4 and item[4] is not None else 0.0
     ))
 
-  # Initialize store settings dictionary with bulletproof default fallbacks
   settings_dict = {
       "store_name": "SWARAJ GROCERY",
       "store_address": "Main Road, Katol, Nagpur, Maharashtra",

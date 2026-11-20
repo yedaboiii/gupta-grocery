@@ -36,6 +36,78 @@
             addToCart(id, name, price, gst);
         }
 
+        function incProdFromEl(btn) {
+            const container = btn.closest('.product-action-container');
+            const id = container.getAttribute('data-id');
+            const name = container.getAttribute('data-name');
+            const price = parseFloat(container.getAttribute('data-price'));
+            const gst = parseFloat(container.getAttribute('data-gst'));
+            addToCart(id, name, price, gst);
+        }
+
+        function selectVariant(pillBtn) {
+            const card = pillBtn.closest('.product-card');
+            if (!card) return;
+
+            card.querySelectorAll('.variant-pill').forEach(function (btn) {
+                btn.classList.remove('bg-emerald-600', 'text-white', 'border-emerald-600', 'shadow-xs');
+                btn.classList.add('bg-slate-100', 'text-slate-700', 'border-slate-200');
+            });
+            pillBtn.classList.remove('bg-slate-100', 'text-slate-700', 'border-slate-200');
+            pillBtn.classList.add('bg-emerald-600', 'text-white', 'border-emerald-600', 'shadow-xs');
+
+            const id = pillBtn.getAttribute('data-id');
+            const displayName = pillBtn.getAttribute('data-display-name');
+            const price = parseFloat(pillBtn.getAttribute('data-price')) || 0;
+            const mrp = parseFloat(pillBtn.getAttribute('data-mrp')) || price;
+            const savings = parseFloat(pillBtn.getAttribute('data-savings')) || 0;
+            const stock = pillBtn.getAttribute('data-stock') || '0';
+            const gst = pillBtn.getAttribute('data-gst') || '5';
+            const imgUrl = pillBtn.getAttribute('data-image') || '';
+
+            const stockEl = card.querySelector('.card-stock');
+            if (stockEl) stockEl.innerText = 'Stock: ' + stock;
+
+            const priceEl = card.querySelector('.card-price');
+            if (priceEl) priceEl.innerText = '₹' + price.toFixed(2);
+
+            const mrpEl = card.querySelector('.card-mrp');
+            if (mrpEl) {
+                if (mrp > price) {
+                    mrpEl.innerText = 'MRP ₹' + mrp.toFixed(2);
+                    mrpEl.classList.add('line-through');
+                } else {
+                    mrpEl.innerText = 'Price';
+                    mrpEl.classList.remove('line-through');
+                }
+            }
+
+            const saveBadge = card.querySelector('.card-save-badge');
+            if (saveBadge) {
+                if (savings > 0) {
+                    saveBadge.innerText = 'Save ₹' + Math.round(savings);
+                    saveBadge.classList.remove('hidden');
+                } else {
+                    saveBadge.classList.add('hidden');
+                }
+            }
+
+            const imgEl = card.querySelector('.card-image');
+            if (imgEl && imgUrl) {
+                imgEl.src = imgUrl;
+            }
+
+            const actionContainer = card.querySelector('.product-action-container');
+            if (actionContainer) {
+                actionContainer.setAttribute('data-id', id);
+                actionContainer.setAttribute('data-name', displayName);
+                actionContainer.setAttribute('data-price', price.toFixed(2));
+                actionContainer.setAttribute('data-gst', gst);
+            }
+
+            updateUI();
+        }
+
         function toggleCartDrawer() {
             const drawer = document.getElementById('cart-drawer');
             const backdrop = document.getElementById('drawer-backdrop');
@@ -63,26 +135,21 @@
             let totalCount = 0;
 
             const addButtons = document.querySelectorAll('.product-action-container');
-            addButtons.forEach(container => {
+            addButtons.forEach(function (container) {
                 const prodId = container.getAttribute('data-id');
-                const price = parseFloat(container.getAttribute('data-price'));
-                const name = container.getAttribute('data-name');
-                const gst = parseFloat(container.getAttribute('data-gst'));
 
                 if (cart[prodId]) {
-                    container.innerHTML = `
-                        <div class="flex items-center justify-between bg-emerald-600 text-white rounded-xl px-3 py-2 shadow-lg w-full transform scale-105 transition-all">
-                            <button type="button" onclick="decrementCart('${prodId}')" class="px-2 font-black hover:bg-emerald-700 rounded-lg text-sm">-</button>
-                            <span class="font-black text-xs">${cart[prodId].qty}</span>
-                            <button type="button" onclick="addToCart('${prodId}', '${name.replace(/'/g, "\\'")}', ${price}, ${gst})" class="px-2 font-black hover:bg-emerald-700 rounded-lg text-sm">+</button>
-                        </div>
-                    `;
+                    container.innerHTML =
+                        '<div class="flex items-center justify-between bg-emerald-600 text-white rounded-xl px-3 py-2 shadow-lg w-full transform scale-105 transition-all">' +
+                        '<button type="button" onclick="decrementCart(\'' + prodId + '\')" class="px-2 font-black hover:bg-emerald-700 rounded-lg text-sm">-</button>' +
+                        '<span class="font-black text-xs">' + cart[prodId].qty + '</span>' +
+                        '<button type="button" onclick="incProdFromEl(this)" class="px-2 font-black hover:bg-emerald-700 rounded-lg text-sm">+</button>' +
+                        '</div>';
                 } else {
-                    container.innerHTML = `
-                        <button type="button" onclick="addProdFromEl(this)" class="w-full bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 py-2 rounded-2xl text-xs font-black transition shadow-sm tracking-wider">
-                            ADD
-                        </button>
-                    `;
+                    container.innerHTML =
+                        '<button type="button" onclick="addProdFromEl(this)" class="w-full bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 py-2 rounded-2xl text-xs font-black transition shadow-sm tracking-wider">' +
+                        'ADD' +
+                        '</button>';
                 }
             });
 
@@ -99,19 +166,48 @@
                 gstTotal += itemGst;
                 totalCount += item.qty;
 
-                container.innerHTML += `
-                    <div class="flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs mb-2 shadow-sm">
-                        <div>
-                            <span class="font-bold text-slate-800 block">${item.name}</span>
-                            <span class="text-[10px] text-slate-500 font-medium">₹${item.price.toFixed(2)} x ${item.qty} (Incl. GST)</span>
-                        </div>
-                        <div class="flex items-center space-x-2 bg-emerald-600 text-white rounded-xl px-3 py-1 shadow">
-                            <button type="button" onclick="decrementCart('${id}')" class="font-bold px-1">-</button>
-                            <span class="font-bold text-xs">${item.qty}</span>
-                            <button type="button" onclick="addToCart('${id}', '${item.name.replace(/'/g, "\\'")}', ${item.price}, ${item.gst})" class="font-bold px-1">+</button>
-                        </div>
-                    </div>
-                `;
+                const rowEl = document.createElement('div');
+                rowEl.className = 'flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs mb-2 shadow-sm';
+
+                const infoDiv = document.createElement('div');
+                const titleSpan = document.createElement('span');
+                titleSpan.className = 'font-bold text-slate-800 block';
+                titleSpan.innerText = item.name;
+                const subSpan = document.createElement('span');
+                subSpan.className = 'text-[10px] text-slate-500 font-medium';
+                subSpan.innerText = '₹' + item.price.toFixed(2) + ' x ' + item.qty + ' (Incl. GST)';
+                infoDiv.appendChild(titleSpan);
+                infoDiv.appendChild(subSpan);
+
+                const ctrlDiv = document.createElement('div');
+                ctrlDiv.className = 'flex items-center space-x-2 bg-emerald-600 text-white rounded-xl px-3 py-1 shadow';
+                const decBtn = document.createElement('button');
+                decBtn.type = 'button';
+                decBtn.className = 'font-bold px-1';
+                decBtn.innerText = '-';
+                decBtn.onclick = function () { decrementCart(id); };
+
+                const qtySpan = document.createElement('span');
+                qtySpan.className = 'font-bold text-xs';
+                qtySpan.innerText = item.qty;
+
+                const incBtn = document.createElement('button');
+                incBtn.type = 'button';
+                incBtn.className = 'font-bold px-1';
+                incBtn.innerText = '+';
+                incBtn.onclick = function () { addToCart(id, item.name, item.price, item.gst); };
+
+                ctrlDiv.appendChild(decBtn);
+                ctrlDiv.appendChild(qtySpan);
+                ctrlDiv.appendChild(incBtn);
+
+                rowEl.appendChild(infoDiv);
+                rowEl.appendChild(ctrlDiv);
+                container.appendChild(rowEl);
+            }
+
+            if (totalCount === 0) {
+                container.innerHTML = '<p class="text-slate-400 text-center text-xs py-6 font-medium">Your basket is empty.</p>';
             }
 
             let grandTotal = subtotal;
@@ -122,9 +218,9 @@
             document.getElementById('cart_data_input').value = JSON.stringify(cart);
 
             if (totalCount === 0) {
-                if(floatingBar) floatingBar.classList.add('translate-y-32', 'opacity-0');
+                if (floatingBar) floatingBar.classList.add('translate-y-32', 'opacity-0');
             } else {
-                if(floatingBar) {
+                if (floatingBar) {
                     floatingBar.classList.remove('translate-y-32', 'opacity-0');
                     document.getElementById('floating-item-count').innerText = totalCount + (totalCount === 1 ? ' item' : ' items');
                     document.getElementById('floating-total-amt').innerText = '₹' + grandTotal.toFixed(2);
@@ -133,7 +229,7 @@
         }
 
         function filterCategory(cat, btn) {
-            document.querySelectorAll('.cat-btn').forEach(b => {
+            document.querySelectorAll('.cat-btn').forEach(function (b) {
                 b.classList.remove('bg-emerald-600', 'text-white', 'shadow-md');
                 b.classList.add('bg-white', 'border-slate-200', 'text-slate-700', 'hover:bg-slate-50');
             });
@@ -212,52 +308,67 @@
             <button type="button" onclick="filterCategory('Cosmetics', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">💄 Cosmetics</button>
         </div>
 
-        <!-- Product Grid -->
+        <!-- Product Grid (Grouped by Item Name with Pack-Size Variant Selector Pills) -->
         <div class="w-full">
             <h2 class="text-base font-extrabold text-slate-800 mb-4 tracking-tight">Explore Products</h2>
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-                {% for p in products %}
-                {% set pack_size = p[3] or '' %}
-                {% set mrp_val = (p[4] or 0.0)|float %}
-                {% set sell_val = (p[5] or 0.0)|float %}
-                {% set savings_val = mrp_val - sell_val %}
-                <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-emerald-300 transition duration-300" data-category="{{ p[11] }}" data-name="{{ p[2] }}">
+                {% for group in grouped_products %}
+                {% set v0 = group.variants[0] %}
+                <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-emerald-300 transition duration-300" data-category="{{ group.category }}" data-name="{{ group.name }}">
                     <div>
                         <div class="h-32 md:h-36 bg-slate-50 rounded-2xl mb-3 overflow-hidden flex items-center justify-center border border-slate-100 p-2 relative shadow-inner">
-                            {% if p[12] %}
-                            <img src="{{ p[12] }}" alt="{{ p[2] }}" class="w-full h-full object-contain transform hover:scale-105 transition duration-300">
+                            {% if group.image_url %}
+                            <img src="{{ group.image_url }}" alt="{{ group.name }}" class="card-image w-full h-full object-contain transform hover:scale-105 transition duration-300">
                             {% else %}
                             <span class="text-3xl">📦</span>
                             {% endif %}
-                            {% if savings_val > 0 %}
-                            <span class="absolute top-2 left-2 bg-emerald-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow">
-                                Save ₹{{ "%.0f"|format(savings_val) }}
+                            <span class="card-save-badge {% if v0.savings <= 0 %}hidden{% endif %} absolute top-2 left-2 bg-emerald-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow">
+                                Save ₹{{ "%.0f"|format(v0.savings) }}
                             </span>
-                            {% endif %}
                         </div>
-                        <span class="text-[9px] bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-md font-extrabold uppercase tracking-wider">{{ p[11] }}</span>
-                        <h3 class="font-bold text-xs text-slate-900 mt-1.5 line-clamp-2 leading-relaxed">{{ p[2] }}</h3>
-                        <div class="flex items-center justify-between gap-1 mt-1">
-                            {% if pack_size %}
-                            <span class="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">{{ pack_size }}</span>
-                            {% else %}
-                            <span class="text-[10px] text-slate-400 font-medium">Stock: {{ p[6] }}</span>
-                            {% endif %}
-                            {% if pack_size %}
-                            <span class="text-[10px] text-slate-400 font-medium">Stock: {{ p[6] }}</span>
-                            {% endif %}
+                        <span class="text-[9px] bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-md font-extrabold uppercase tracking-wider">{{ group.category }}</span>
+                        <h3 class="font-bold text-xs text-slate-900 mt-1.5 line-clamp-2 leading-relaxed">{{ group.name }}</h3>
+
+                        <!-- Pack-Size Variant Pills (Shows multiple pills when variants exist, or single pack badge) -->
+                        {% if group.variants|length > 1 %}
+                        <div class="flex flex-wrap gap-1 mt-2">
+                            {% for v in group.variants %}
+                            <button type="button"
+                                    onclick="selectVariant(this)"
+                                    data-id="{{ v.id }}"
+                                    data-display-name="{{ v.display_name | e }}"
+                                    data-price="{{ '%.2f'|format(v.price) }}"
+                                    data-mrp="{{ '%.2f'|format(v.mrp) }}"
+                                    data-savings="{{ '%.2f'|format(v.savings) }}"
+                                    data-stock="{{ v.stock }}"
+                                    data-gst="{{ v.gst }}"
+                                    data-image="{{ v.image_url }}"
+                                    class="variant-pill px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition {% if loop.first %}bg-emerald-600 text-white border-emerald-600 shadow-xs{% else %}bg-slate-100 text-slate-700 border-slate-200 hover:border-emerald-400{% endif %}">
+                                {{ v.pack_size }}
+                            </button>
+                            {% endfor %}
                         </div>
+                        {% elif v0.has_pack %}
+                        <span class="inline-block mt-1.5 text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                            {{ v0.pack_size }}
+                        </span>
+                        {% endif %}
+
+                        <p class="card-stock text-[10px] text-slate-400 mt-1 font-medium">Stock: {{ v0.stock }}</p>
                     </div>
+
                     <div class="mt-4 flex items-center justify-between pt-2 border-t border-slate-100">
                         <div>
-                            {% if mrp_val > sell_val %}
-                            <span class="text-[10px] text-slate-400 line-through block leading-none font-medium">MRP ₹{{ "%.2f"|format(mrp_val) }}</span>
-                            {% else %}
-                            <span class="text-[10px] text-slate-400 block leading-none font-medium">Price</span>
-                            {% endif %}
-                            <span class="text-emerald-700 font-black text-sm">₹{{ "%.2f"|format(sell_val) }}</span>
+                            <span class="card-mrp text-[10px] text-slate-400 {% if v0.mrp > v0.price %}line-through{% endif %} block leading-none font-medium">
+                                {% if v0.mrp > v0.price %}MRP ₹{{ "%.2f"|format(v0.mrp) }}{% else %}Price{% endif %}
+                            </span>
+                            <span class="card-price text-emerald-700 font-black text-sm">₹{{ "%.2f"|format(v0.price) }}</span>
                         </div>
-                        <div class="w-24 product-action-container" data-id="{{ p[0] }}" data-name="{{ p[2] | e }}" data-price="{{ p[5] }}" data-gst="{{ p[7] }}">
+                        <div class="w-24 product-action-container"
+                             data-id="{{ v0.id }}"
+                             data-name="{{ v0.display_name | e }}"
+                             data-price="{{ '%.2f'|format(v0.price) }}"
+                             data-gst="{{ v0.gst }}">
                             <button type="button" onclick="addProdFromEl(this)" class="w-full bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 py-2 rounded-2xl text-xs font-black transition shadow-sm tracking-wide">
                                 ADD
                             </button>

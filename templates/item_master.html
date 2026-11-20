@@ -27,7 +27,7 @@
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b border-slate-200 pb-5 gap-4">
             <div>
                 <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">🗂️ Item Master (Central SKU Catalog)</h1>
-                <p class="text-xs text-slate-500 mt-1">Track pack size, supplier, cost price, +₹3/+₹4/+₹x rupee markup, GST-inclusive margin, sold profit, and online store visibility.</p>
+                <p class="text-xs text-slate-500 mt-1">Keep the same Item Name across pack sizes (e.g., 5kg, 1kg, 500g) to group variants automatically on the online storefront.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <a href="/item_master/export_csv" class="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-3.5 py-2 rounded-xl text-xs font-bold transition">
@@ -202,7 +202,10 @@
                                 </a>
                             </td>
                             <td class="py-3 px-3.5 text-center whitespace-nowrap">
-                                <div class="inline-flex items-center gap-1.5">
+                                <div class="inline-flex items-center gap-1">
+                                    <button type="button" onclick='openVariantModal({{ item | tojson | safe }})' title="Add another pack size variant (e.g. 1kg, 500g) for this item" class="bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 px-2 py-1.5 rounded-lg font-bold text-[11px] transition">
+                                        ➕ Variant
+                                    </button>
                                     <button type="button" onclick='openEditModal({{ item | tojson | safe }})' class="bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition">
                                         ✏️ Edit
                                     </button>
@@ -256,12 +259,12 @@
 
                 <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
                     <div class="sm:col-span-2">
-                        <label class="block font-bold text-slate-700 mb-1">Item Name *</label>
+                        <label class="block font-bold text-slate-700 mb-1">Item Name (Keep identical to group variants) *</label>
                         <input type="text" name="name" id="f-name" required placeholder="e.g. Aashirvaad Shudh Chakki Atta" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
                     </div>
                     <div>
-                        <label class="block font-bold text-slate-700 mb-1">Pack Size</label>
-                        <input type="text" name="pack_size" id="f-pack" placeholder="e.g. 5kg, 1L, 500g" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                        <label class="block font-bold text-indigo-800 mb-1">Pack Size (Variant)</label>
+                        <input type="text" name="pack_size" id="f-pack" placeholder="e.g. 5kg, 1kg, 500g" class="w-full p-2.5 border border-indigo-300 rounded-xl bg-indigo-50/40 focus:bg-white font-bold outline-none">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">Category *</label>
@@ -489,6 +492,37 @@
             document.getElementById('f-active').checked = true;
             updateProfitPreview();
             document.getElementById('item-modal').classList.remove('hidden');
+        }
+
+        function openVariantModal(item) {
+            document.getElementById('modal-title').innerText = '➕ Add Pack Size Variant for "' + (item.name || '') + '"';
+            document.getElementById('form-action').value = 'create';
+            document.getElementById('form-prod-id').value = '';
+            document.getElementById('f-sku').value = '';
+            document.getElementById('f-barcode').value = '';
+            document.getElementById('f-brand').value = item.brand || '';
+            document.getElementById('f-name').value = item.name || '';
+            document.getElementById('f-pack').value = '';
+            document.getElementById('f-supplier').value = item.supplier_name || '';
+            document.getElementById('f-category').value = item.category || 'Essentials';
+            document.getElementById('f-unit').value = item.unit || 'pcs';
+            document.getElementById('f-mrp').value = '';
+            document.getElementById('f-price').value = '';
+            document.getElementById('f-cost').value = '';
+            document.getElementById('f-markup-rs').value = '';
+            document.getElementById('f-gst').value = String(parseInt(item.gst_rate || 5, 10));
+            document.getElementById('f-hsn').value = item.hsn_code || '';
+            document.getElementById('f-stock').value = '0';
+            document.getElementById('f-reorder').value = item.reorder_level || 15;
+            document.getElementById('f-rack').value = item.rack_location || 'Rack-1 Shelf A';
+            document.getElementById('f-batch').value = 'GENERAL';
+            document.getElementById('f-expiry').value = item.expiry_date || '2027-12-31';
+            document.getElementById('f-image').value = item.image_url || '';
+            document.getElementById('f-online').checked = Number(item.is_online) === 1;
+            document.getElementById('f-active').checked = true;
+            updateProfitPreview();
+            document.getElementById('item-modal').classList.remove('hidden');
+            setTimeout(function () { document.getElementById('f-pack').focus(); }, 50);
         }
 
         function openEditModal(item) {
