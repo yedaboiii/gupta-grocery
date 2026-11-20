@@ -6,6 +6,19 @@
     <title>Inventory &amp; Track List - Swaraj Grocery</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
+        const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+        function getDayNameFromISO(dateStr) {
+            if (!dateStr || dateStr.length < 10) return "";
+            const parts = dateStr.slice(0, 10).split("-");
+            if (parts.length !== 3) return "";
+            const y = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10) - 1;
+            const d = parseInt(parts[2], 10);
+            const dt = new Date(y, m, d);
+            return isNaN(dt.getTime()) ? "" : DAY_NAMES[dt.getDay()];
+        }
+
         function filterInventoryTable() {
             const q = (document.getElementById('inv_search')?.value || '').toLowerCase().trim();
             document.querySelectorAll('#inventory-tbody tr.inv-row').forEach(function (row) {
@@ -17,19 +30,45 @@
         function filterTrackList() {
             const prodFilter = (document.getElementById('track_product_filter')?.value || '').toLowerCase().trim();
             const typeFilter = (document.getElementById('track_type_filter')?.value || 'ALL').toUpperCase();
+            const dayFilter = (document.getElementById('track_day_filter')?.value || '').toLowerCase().trim();
+            const dateFilter = (document.getElementById('track_date_filter')?.value || '').trim();
+            const monthFilter = (document.getElementById('track_month_filter')?.value || '').trim();
             const searchQ = (document.getElementById('track_search')?.value || '').toLowerCase().trim();
+
+            let visibleCount = 0;
 
             document.querySelectorAll('#track-tbody tr.track-row').forEach(function (row) {
                 const rowProd = (row.getAttribute('data-product') || '').toLowerCase();
                 const rowType = (row.getAttribute('data-type') || '').toUpperCase();
+                const rowDate = (row.getAttribute('data-date') || '').trim();
+                const rowDay = (row.getAttribute('data-day') || '').toLowerCase();
+                const rowMonth = rowDate.slice(0, 7);
                 const rowText = row.innerText.toLowerCase();
 
                 const matchProd = !prodFilter || rowProd === prodFilter;
                 const matchType = typeFilter === 'ALL' || rowType === typeFilter;
+                const matchDay = !dayFilter || rowDay === dayFilter;
+                const matchDate = !dateFilter || rowDate === dateFilter;
+                const matchMonth = !monthFilter || rowMonth === monthFilter;
                 const matchSearch = !searchQ || rowText.includes(searchQ);
 
-                row.style.display = (matchProd && matchType && matchSearch) ? '' : 'none';
+                const show = matchProd && matchType && matchDay && matchDate && matchMonth && matchSearch;
+                row.style.display = show ? '' : 'none';
+                if (show) visibleCount++;
             });
+
+            const countBadge = document.getElementById('track_visible_count');
+            if (countBadge) countBadge.innerText = visibleCount + " entries";
+        }
+
+        function resetTrackFilters() {
+            ['track_product_filter', 'track_day_filter', 'track_date_filter', 'track_month_filter', 'track_search'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            const typeEl = document.getElementById('track_type_filter');
+            if (typeEl) typeEl.value = 'ALL';
+            filterTrackList();
         }
 
         function selectProductTrack(productName) {
@@ -40,6 +79,17 @@
                 document.getElementById('server-track-section')?.scrollIntoView({ behavior: 'smooth' });
             }
         }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('#track-tbody tr.track-row').forEach(function (row) {
+                const rowDate = (row.getAttribute('data-date') || '').trim();
+                const dayName = getDayNameFromISO(rowDate);
+                row.setAttribute('data-day', dayName);
+                const dayCell = row.querySelector('.track-day-cell');
+                if (dayCell) dayCell.innerText = dayName || '-';
+            });
+            filterTrackList();
+        });
     </script>
 </head>
 <body class="bg-slate-100 font-sans p-4 md:p-6">
@@ -49,7 +99,7 @@
         <div class="bg-white p-4 md:p-6 rounded-2xl shadow-md border border-slate-200">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
                 <h1 class="text-xl font-bold text-blue-700">📦 Store Inventory &amp; Categories Management</h1>
-                <span class="text-xs font-semibold text-slate-500">Product Catalog View • IST (Asia/Kolkata)</span>
+                <span class="text-xs font-semibold text-slate-500">Nagpur IST (Asia/Kolkata • UTC+05:30)</span>
             </div>
 
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
@@ -96,13 +146,45 @@
 
         <!-- Server Product Track List (Sold & Purchased) -->
         <div id="server-track-section" class="bg-white p-4 md:p-6 rounded-2xl shadow-md border border-slate-200">
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
                 <div>
                     <h2 class="text-lg font-bold text-slate-900">🕒 Server Product Track List (Sold &amp; Purchased)</h2>
-                    <p class="text-xs text-slate-500">Every sale and purchase registered on the server with Indian date &amp; IST timestamp.</p>
+                    <p class="text-xs text-slate-500">Every sale and purchase registered on the server with Nagpur IST date &amp; timestamp.</p>
                 </div>
-                <div class="flex flex-wrap gap-2">
-                    <select id="track_product_filter" onchange="filterTrackList()" class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 font-semibold outline-none">
+                <span id="track_visible_count" class="text-xs font-bold bg-blue-50 text-blue-800 px-3 py-1 rounded-full border border-blue-200 self-start sm:self-auto">
+                    {{ (tracks or [])|length }} entries
+                </span>
+            </div>
+
+            <!-- Day, Date, Month, Product, Type & Search Filters -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div>
+                    <label for="track_day_filter" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Day</label>
+                    <select id="track_day_filter" onchange="filterTrackList()" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-semibold outline-none">
+                        <option value="">All Days</option>
+                        <option value="Monday">Monday</option>
+                        <option value="Tuesday">Tuesday</option>
+                        <option value="Wednesday">Wednesday</option>
+                        <option value="Thursday">Thursday</option>
+                        <option value="Friday">Friday</option>
+                        <option value="Saturday">Saturday</option>
+                        <option value="Sunday">Sunday</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="track_date_filter" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Exact Date</label>
+                    <input type="date" id="track_date_filter" onchange="filterTrackList()" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-semibold outline-none">
+                </div>
+
+                <div>
+                    <label for="track_month_filter" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Month</label>
+                    <input type="month" id="track_month_filter" onchange="filterTrackList()" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-semibold outline-none">
+                </div>
+
+                <div>
+                    <label for="track_product_filter" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Product</label>
+                    <select id="track_product_filter" onchange="filterTrackList()" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-semibold outline-none">
                         <option value="">All Products</option>
                         {% for p in products %}
                         {% if p[2] %}
@@ -110,12 +192,25 @@
                         {% endif %}
                         {% endfor %}
                     </select>
-                    <select id="track_type_filter" onchange="filterTrackList()" class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 font-semibold outline-none">
-                        <option value="ALL">All Movements (Sold &amp; Purchased)</option>
+                </div>
+
+                <div>
+                    <label for="track_type_filter" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Movement</label>
+                    <select id="track_type_filter" onchange="filterTrackList()" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-semibold outline-none">
+                        <option value="ALL">All (Sold &amp; Purchased)</option>
                         <option value="SOLD">Sold Only</option>
                         <option value="PURCHASED">Purchased Only</option>
                     </select>
-                    <input type="text" id="track_search" onkeyup="filterTrackList()" placeholder="Search timestamp, ref, product..." class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 focus:bg-white outline-none">
+                </div>
+
+                <div>
+                    <label for="track_search" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Search / Reset</label>
+                    <div class="flex gap-1.5">
+                        <input type="text" id="track_search" onkeyup="filterTrackList()" placeholder="Ref, time..." class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white outline-none">
+                        <button type="button" onclick="resetTrackFilters()" title="Reset all filters" class="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-xs font-bold transition">
+                            Reset
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -123,8 +218,9 @@
                 <table class="w-full border-collapse border border-slate-200 text-xs">
                     <thead>
                         <tr class="bg-slate-800 text-white text-left">
+                            <th class="p-2.5 border border-slate-700">Day</th>
                             <th class="p-2.5 border border-slate-700">Date (IST)</th>
-                            <th class="p-2.5 border border-slate-700">Indian Timestamp</th>
+                            <th class="p-2.5 border border-slate-700">Nagpur Timestamp</th>
                             <th class="p-2.5 border border-slate-700">Product</th>
                             <th class="p-2.5 border border-slate-700">Type</th>
                             <th class="p-2.5 border border-slate-700 text-right">Qty Change</th>
@@ -136,10 +232,13 @@
                         {% for t in tracks or [] %}
                         {% set mtype = (t['movement_type'] if t['movement_type'] is defined else t[5])|upper %}
                         {% set qty_val = (t['qty_change'] if t['qty_change'] is defined else t[6])|float %}
+                        {% set tdate = t['track_date'] if t['track_date'] is defined else t[10] %}
                         <tr class="track-row hover:bg-slate-50"
                             data-product="{{ (t['product_name'] if t['product_name'] is defined else t[3]) | e }}"
-                            data-type="{{ mtype }}">
-                            <td class="p-2.5 border font-mono font-semibold text-slate-700">{{ t['track_date'] if t['track_date'] is defined else t[10] }}</td>
+                            data-type="{{ mtype }}"
+                            data-date="{{ tdate }}">
+                            <td class="track-day-cell p-2.5 border font-semibold text-indigo-700">-</td>
+                            <td class="p-2.5 border font-mono font-semibold text-slate-700">{{ tdate }}</td>
                             <td class="p-2.5 border font-mono text-blue-900 font-bold">{{ t['ist_timestamp'] if t['ist_timestamp'] is defined else t[11] }}</td>
                             <td class="p-2.5 border font-semibold text-slate-900">{{ t['product_name'] if t['product_name'] is defined else t[3] }}</td>
                             <td class="p-2.5 border">
@@ -164,7 +263,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="p-5 border text-center text-slate-400 font-medium">No sold or purchased product entries recorded on the server yet.</td>
+                            <td colspan="8" class="p-5 border text-center text-slate-400 font-medium">No sold or purchased product entries recorded on the server yet.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
