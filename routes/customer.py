@@ -1,7 +1,7 @@
 from datetime import datetime
 import json
 import sqlite3
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, send_from_directory, url_for
 
 customer_bp = Blueprint("customer", __name__)
 
@@ -34,6 +34,45 @@ def _ensure_storefront_columns(cursor, conn):
     conn.commit()
   except sqlite3.OperationalError:
     pass
+
+
+@customer_bp.route("/sw.js")
+def service_worker():
+  response = send_from_directory("static", "sw.js", mimetype="application/javascript")
+  response.headers["Service-Worker-Allowed"] = "/"
+  return response
+
+
+@customer_bp.route("/privacy")
+def privacy_policy():
+  html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - Swaraj Grocery</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 font-sans p-4 md:p-8 text-slate-900">
+  <div class="max-w-2xl mx-auto bg-white p-6 md:p-8 rounded-3xl shadow-md border border-slate-200 space-y-4 text-xs leading-relaxed">
+    <div class="flex justify-between items-center border-b border-slate-200 pb-4">
+      <div>
+        <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full">Swaraj Grocery • Katol</span>
+        <h1 class="text-xl font-black text-slate-900 mt-1.5">Privacy Policy</h1>
+      </div>
+      <a href="/" class="bg-slate-100 hover:bg-slate-200 text-slate-800 px-3.5 py-2 rounded-xl font-bold transition">← Back to Store</a>
+    </div>
+    <p class="text-slate-600"><strong>Swaraj Grocery</strong> respects your privacy. When you place an online grocery order, we collect only the details needed to prepare and deliver your order:</p>
+    <ul class="list-disc pl-5 space-y-1.5 text-slate-700">
+      <li><strong>Contact & Delivery Details:</strong> Your name, phone/WhatsApp number, area, house number, and locality/town in Katol are used strictly for order confirmation, doorstep delivery, and invoice generation.</li>
+      <li><strong>Order & Payment Records:</strong> Selected grocery items, quantities, tax breakdown, and payment mode (Online UPI or Cash on Delivery) are recorded for billing and order fulfillment.</li>
+      <li><strong>No Third-Party Ad Selling:</strong> We do not sell or rent your personal contact details to third-party advertisers.</li>
+    </ul>
+    <p class="text-slate-500 pt-2 border-t border-slate-100">For questions regarding an order or your data, contact Swaraj Grocery in Katol.</p>
+  </div>
+</body>
+</html>"""
+  return html
 
 
 @customer_bp.route("/")
