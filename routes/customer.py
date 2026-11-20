@@ -6,15 +6,35 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 customer_bp = Blueprint("customer", __name__)
 
 
+def _ensure_storefront_columns(cursor, conn):
+  for col_sql in [
+      "ALTER TABLE products ADD COLUMN is_online INTEGER DEFAULT 1",
+      "ALTER TABLE products ADD COLUMN is_active INTEGER DEFAULT 1",
+      "ALTER TABLE bills ADD COLUMN delivery_address TEXT DEFAULT ''",
+      "ALTER TABLE bills ADD COLUMN order_status TEXT DEFAULT 'Unpacked'",
+      "ALTER TABLE bills ADD COLUMN order_source TEXT DEFAULT 'POS'",
+  ]:
+    try:
+      cursor.execute(col_sql)
+      conn.commit()
+    except sqlite3.OperationalError:
+      pass
+
+
 @customer_bp.route("/")
 def customer_shop():
   conn = sqlite3.connect("store_pos.db")
   conn.row_factory = sqlite3.Row
   cursor = conn.cursor()
-  # Query including image_url for the online storefront display
+  _ensure_storefront_columns(cursor, conn)
+
+  # Query including image_url for the online storefront display, filtered by Item Master flags
   cursor.execute(
       "SELECT id, barcode, name, price, stock, gst_rate, batch_no,"
-      " expiry_date, rack_location, category, image_url FROM products WHERE stock > 0"
+      " expiry_date, rack_location, category, image_url FROM products"
+      " WHERE stock > 0"
+      " AND COALESCE(is_active, 1) = 1"
+      " AND COALESCE(is_online, 1) = 1"
   )
   products = cursor.fetchall()
   conn.close()
@@ -56,17 +76,7 @@ def online_checkout():
 
     conn = sqlite3.connect("store_pos.db")
     cursor = conn.cursor()
-
-    # Ensure delivery_address, order_status, and order_source columns exist safely
-    for col_sql in [
-        "ALTER TABLE bills ADD COLUMN delivery_address TEXT DEFAULT ''",
-        "ALTER TABLE bills ADD COLUMN order_status TEXT DEFAULT 'Unpacked'",
-        "ALTER TABLE bills ADD COLUMN order_source TEXT DEFAULT 'POS'",
-    ]:
-      try:
-        cursor.execute(col_sql)
-      except Exception:
-        pass
+    _ensure_storefront_columns(cursor, conn)
 
     subtotal = 0.0
     gst_total = 0.0
