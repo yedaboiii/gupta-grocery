@@ -5,24 +5,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inventory Management - Swaraj Grocery</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>function focusBarcode() { document.getElementById('barcode_input').focus(); }</script>
+    <script>
+        function focusBarcode() {
+            const el = document.getElementById('barcode_input');
+            if (el) el.focus();
+        }
+
+        function filterInventoryTable() {
+            const q = (document.getElementById('inv_search')?.value || '').toLowerCase().trim();
+            document.querySelectorAll('#inventory-tbody tr.inv-row').forEach(function (row) {
+                const text = row.innerText.toLowerCase();
+                row.style.display = (!q || text.includes(q)) ? '' : 'none';
+            });
+        }
+    </script>
 </head>
 <body class="bg-slate-100 font-sans p-4 md:p-6" onload="focusBarcode()">
     {{ admin_navbar | safe }}
     <div class="max-w-7xl mx-auto bg-white p-4 md:p-6 rounded-2xl shadow-md border border-slate-200">
-        <h1 class="text-xl font-bold text-blue-700 mb-4">📦 Store Inventory & Categories Management</h1>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+            <h1 class="text-xl font-bold text-blue-700">📦 Store Inventory & Categories Management</h1>
+            <span class="text-xs font-semibold text-slate-500">Add &amp; Restock Only</span>
+        </div>
+
         <form action="/inventory" method="POST" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 mb-6 bg-blue-50 p-4 rounded-xl border border-blue-200 shadow-sm">
             <div class="sm:col-span-2 md:col-span-5 pb-1 border-b border-blue-200">
                 <span class="text-xs font-extrabold text-blue-900">➕ Add New Item or Scan Barcode to Restock</span>
             </div>
             <input type="text" id="barcode_input" name="barcode" placeholder="Barcode ID..." required class="p-2.5 border rounded-lg text-xs bg-white font-mono font-bold">
             <input type="text" name="name" placeholder="Product Name" required class="p-2.5 border rounded-lg text-xs bg-white">
-            <input type="number" step="0.01" name="price" placeholder="Price (₹)" required class="p-2.5 border rounded-lg text-xs bg-white">
-            <input type="number" name="stock" placeholder="Stock Qty" required class="p-2.5 border rounded-lg text-xs bg-white">
+            <input type="number" step="0.01" min="0" name="price" placeholder="Price (₹)" required class="p-2.5 border rounded-lg text-xs bg-white">
+            <input type="number" step="any" min="0" name="stock" placeholder="Stock Qty" required class="p-2.5 border rounded-lg text-xs bg-white">
             <input type="text" name="category" placeholder="Category (e.g. Essentials)" value="Essentials" required class="p-2.5 border rounded-lg text-xs bg-white">
-            <button type="submit" class="sm:col-span-2 md:col-span-5 bg-blue-600 text-white font-semibold py-2.5 rounded-xl hover:bg-blue-700 text-xs shadow">Save Product</button>
+            <button type="submit" class="sm:col-span-2 md:col-span-5 bg-blue-600 text-white font-semibold py-2.5 rounded-xl hover:bg-blue-700 text-xs shadow transition">Save Product</button>
         </form>
-        <h3 class="font-bold text-sm text-slate-800 mb-3">Product Catalog & Management (Update / Delete)</h3>
+
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+            <h3 class="font-bold text-sm text-slate-800">Product Catalog</h3>
+            <input type="text" id="inv_search" onkeyup="filterInventoryTable()" placeholder="Search barcode, name, or category..." class="w-full sm:w-72 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 focus:bg-white outline-none">
+        </div>
+
         <div class="overflow-x-auto">
             <table class="w-full border-collapse border border-slate-200 text-xs">
                 <thead>
@@ -32,58 +54,21 @@
                         <th class="p-2.5 border">Category</th>
                         <th class="p-2.5 border">Price</th>
                         <th class="p-2.5 border">Stock</th>
-                        <th class="p-2.5 border text-center">Actions</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="inventory-tbody">
                     {% for p in products %}
-                    <tr>
-                        <td class="p-2.5 border font-mono font-bold text-blue-800">{{ p[1] }}</td>
-                        <td class="p-2.5 border font-medium">{{ p[2] }}</td>
-                        <td class="p-2.5 border font-semibold text-emerald-700">{{ p[9] }}</td>
-                        <td class="p-2.5 border">₹{{ p[3] }}</td>
-                        <td class="p-2.5 border font-bold text-green-600">{{ p[4] }}</td>
-                        <td class="p-2.5 border text-center space-x-2">
-                            <button onclick="document.getElementById('edit-modal-{{ p[0] }}').style.display='flex'" class="bg-amber-600 text-white px-2.5 py-1 rounded font-bold hover:bg-amber-700">✏️ Edit</button>
-                            <form action="/inventory" method="POST" class="inline" onsubmit="return confirm('Delete this product?')">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="prod_id" value="{{ p[0] }}">
-                                <button type="submit" class="bg-rose-600 text-white px-2.5 py-1 rounded font-bold hover:bg-rose-700">🗑️ Delete</button>
-                            </form>
-                        </td>
+                    <tr class="inv-row hover:bg-slate-50">
+                        <td class="p-2.5 border font-mono font-bold text-blue-800">{{ p[1] or '-' }}</td>
+                        <td class="p-2.5 border font-medium">{{ p[2] or '' }}</td>
+                        <td class="p-2.5 border font-semibold text-emerald-700">{{ p[9] if (p|length > 9 and p[9]) else 'Essentials' }}</td>
+                        <td class="p-2.5 border">₹{{ '%.2f'|format((p[3] or 0)|float) }}</td>
+                        <td class="p-2.5 border font-bold text-green-600">{{ p[4] if p[4] is not none else 0 }}</td>
                     </tr>
-                    <div id="edit-modal-{{ p[0] }}" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
-                        <div class="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl">
-                            <h3 class="text-base font-bold text-slate-800 mb-4">Edit Product: {{ p[2] }}</h3>
-                            <form action="/inventory" method="POST" class="space-y-3">
-                                <input type="hidden" name="action" value="update">
-                                <input type="hidden" name="prod_id" value="{{ p[0] }}">
-                                <input type="hidden" name="barcode" value="{{ p[1] }}">
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-700">Product Name:</label>
-                                    <input type="text" name="name" value="{{ p[2] }}" required class="w-full p-2 border rounded-lg text-xs">
-                                </div>
-                                <div class="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label class="block text-[10px] font-bold text-slate-700">Price (₹):</label>
-                                        <input type="number" step="0.01" name="price" value="{{ p[3] }}" required class="w-full p-2 border rounded-lg text-xs">
-                                    </div>
-                                    <div>
-                                        <label class="block text-[10px] font-bold text-slate-700">Stock Qty:</label>
-                                        <input type="number" name="stock" value="{{ p[4] }}" required class="w-full p-2 border rounded-lg text-xs">
-                                    </div>
-                                </div>
-                                <div>
-                                    <label class="block text-[10px] font-bold text-slate-700">Category:</label>
-                                    <input type="text" name="category" value="{{ p[9] }}" required class="w-full p-2 border rounded-lg text-xs">
-                                </div>
-                                <div class="flex gap-2 pt-2">
-                                    <button type="submit" class="flex-1 bg-emerald-600 text-white py-2 rounded-xl font-bold text-xs">Save Changes</button>
-                                    <button type="button" onclick="document.getElementById('edit-modal-{{ p[0] }}').style.display='none'" class="flex-1 bg-gray-300 text-gray-800 py-2 rounded-xl font-bold text-xs">Cancel</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="p-4 border text-center text-slate-400 font-medium">No products found in inventory.</td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>
