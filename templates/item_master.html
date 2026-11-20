@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swaraj Grocery - Item Master</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 font-sans p-4 md:p-6 text-slate-900">
+    {{ admin_navbar | safe }}
+
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+    <div class="max-w-7xl mx-auto mb-4 space-y-2">
+        {% for msg in messages %}
+        <div class="bg-emerald-600 text-white px-4 py-3 rounded-2xl text-xs font-bold shadow-md flex justify-between items-center">
+            <span>{{ msg }}</span>
+            <button type="button" onclick="this.parentElement.remove()" class="text-white/80 hover:text-white font-black">✕</button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <div class="max-w-7xl mx-auto bg-white p-6 rounded-2xl shadow-md border border-slate-200 space-y-6">
+        <!-- Header & Actions -->
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b border-slate-200 pb-5 gap-4">
+            <div>
+                <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">🗂️ Item Master (Central SKU Catalog)</h1>
+                <p class="text-xs text-slate-500 mt-1">Single source of truth for SKU codes, barcodes, MRP, selling price, cost margin, HSN/GST, reorder levels, and online visibility.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="/item_master/export_csv" class="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-3.5 py-2 rounded-xl text-xs font-bold transition">
+                    📤 Export CSV
+                </a>
+                <button type="button" onclick="document.getElementById('csv-modal').classList.remove('hidden')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 px-3.5 py-2 rounded-xl text-xs font-bold transition">
+                    📥 Import CSV
+                </button>
+                <button type="button" onclick="openItemModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-extrabold shadow-sm transition">
+                    ➕ Add New Item
+                </button>
+            </div>
+        </div>
+
+        <!-- Summary KPI Cards -->
+        {% set active_count = items | selectattr('is_active', 'equalto', 1) | list | length %}
+        {% set online_count = items | selectattr('is_online', 'equalto', 1) | list | length %}
+        {% set low_count = [] %}
+        {% for it in items %}
+            {% if it.is_active == 1 and it.stock <= it.reorder_level %}
+                {% set _ = low_count.append(1) %}
+            {% endif %}
+        {% endfor %}
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">Total Master SKUs</span>
+                <span class="text-2xl font-black text-slate-900 mt-1 block">{{ items|length }}</span>
+            </div>
+            <div class="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-4">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-800 block">Active Items</span>
+                <span class="text-2xl font-black text-emerald-900 mt-1 block">{{ active_count }}</span>
+            </div>
+            <div class="bg-blue-50/70 border border-blue-200 rounded-2xl p-4">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-blue-800 block">Online Store Enabled</span>
+                <span class="text-2xl font-black text-blue-900 mt-1 block">{{ online_count }}</span>
+            </div>
+            <div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-4">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-amber-800 block">Below Reorder Level</span>
+                <span class="text-2xl font-black text-amber-900 mt-1 block">{{ low_count|length }}</span>
+            </div>
+        </div>
+
+        <!-- Search & Filter Controls -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+            <div class="md:col-span-2">
+                <input type="text" id="master-search" onkeyup="filterMasterTable()" placeholder="🔍 Search SKU, Barcode, Item Name, Brand, HSN..." class="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-xl text-xs outline-none focus:border-emerald-500">
+            </div>
+            <div>
+                <select id="filter-category" onchange="filterMasterTable()" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:border-emerald-500">
+                    <option value="ALL">All Categories</option>
+                    <option value="Grains & Flour">Grains & Flour</option>
+                    <option value="Essentials">Essentials</option>
+                    <option value="Oils & Ghee">Oils & Ghee</option>
+                    <option value="Pulses & Dal">Pulses & Dal</option>
+                    <option value="Beverages">Beverages</option>
+                    <option value="Cosmetics">Cosmetics</option>
+                </select>
+            </div>
+            <div>
+                <select id="filter-channel" onchange="filterMasterTable()" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold outline-none focus:border-emerald-500">
+                    <option value="ALL">All Channels & Status</option>
+                    <option value="ONLINE">Online + POS</option>
+                    <option value="POS_ONLY">POS Only</option>
+                    <option value="ACTIVE">Active Only</option>
+                    <option value="INACTIVE">Inactive / Archived</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Item Master Table -->
+        <div class="border border-slate-200 rounded-2xl overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead>
+                        <tr class="bg-slate-900 text-slate-200 text-[11px] uppercase tracking-wider">
+                            <th class="py-3 px-3.5 font-bold">SKU / Barcode</th>
+                            <th class="py-3 px-3.5 font-bold">Item & Brand</th>
+                            <th class="py-3 px-3.5 font-bold">Category / Unit</th>
+                            <th class="py-3 px-3.5 font-bold text-right">MRP / Sell</th>
+                            <th class="py-3 px-3.5 font-bold text-right">Cost / Margin</th>
+                            <th class="py-3 px-3.5 font-bold text-center">GST / HSN</th>
+                            <th class="py-3 px-3.5 font-bold text-center">Stock / Min</th>
+                            <th class="py-3 px-3.5 font-bold text-center">Channel</th>
+                            <th class="py-3 px-3.5 font-bold text-center">Status</th>
+                            <th class="py-3 px-3.5 font-bold text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="master-tbody" class="divide-y divide-slate-100 bg-white">
+                        {% for item in items %}
+                        <tr class="master-row hover:bg-slate-50 transition align-middle"
+                            data-search="{{ (item.sku_code ~ ' ' ~ item.barcode ~ ' ' ~ item.name ~ ' ' ~ item.brand ~ ' ' ~ item.hsn_code)|lower }}"
+                            data-category="{{ item.category }}"
+                            data-online="{{ item.is_online }}"
+                            data-active="{{ item.is_active }}">
+                            <td class="py-3 px-3.5 whitespace-nowrap">
+                                <span class="font-mono font-extrabold text-emerald-700 block">{{ item.sku_code }}</span>
+                                <span class="font-mono text-[11px] text-slate-500">{{ item.barcode or 'No Barcode' }}</span>
+                            </td>
+                            <td class="py-3 px-3.5 min-w-[200px]">
+                                <div class="flex items-center gap-2.5">
+                                    {% if item.image_url %}
+                                    <img src="{{ item.image_url }}" alt="{{ item.name }}" class="w-9 h-9 rounded-lg object-contain border border-slate-200 bg-slate-50 p-0.5 shrink-0">
+                                    {% else %}
+                                    <div class="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-sm shrink-0">📦</div>
+                                    {% endif %}
+                                    <div>
+                                        <div class="font-bold text-slate-900">{{ item.name }}</div>
+                                        <div class="text-[11px] text-slate-500">{{ item.brand or 'Generic' }} • {{ item.rack_location }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="py-3 px-3.5 whitespace-nowrap">
+                                <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-semibold text-[11px] block w-fit">{{ item.category }}</span>
+                                <span class="text-[11px] text-slate-500 mt-0.5 block">Unit: <strong>{{ item.unit }}</strong></span>
+                            </td>
+                            <td class="py-3 px-3.5 text-right whitespace-nowrap">
+                                <span class="text-[11px] text-slate-400 line-through block">MRP ₹{{ "%.2f"|format(item.mrp) }}</span>
+                                <span class="font-black text-emerald-700 text-sm">₹{{ "%.2f"|format(item.price) }}</span>
+                            </td>
+                            <td class="py-3 px-3.5 text-right whitespace-nowrap">
+                                <span class="text-slate-700 font-semibold block">Cost ₹{{ "%.2f"|format(item.cost_price) }}</span>
+                                {% if item.cost_price > 0 %}
+                                <span class="text-[10px] font-bold {% if item.margin_pct >= 10 %}text-emerald-600{% else %}text-amber-600{% endif %}">
+                                    {{ item.margin_pct }}% margin
+                                </span>
+                                {% else %}
+                                <span class="text-[10px] text-slate-400">Set cost</span>
+                                {% endif %}
+                            </td>
+                            <td class="py-3 px-3.5 text-center whitespace-nowrap">
+                                <span class="font-bold text-slate-800 block">{{ item.gst_rate }}%</span>
+                                <span class="font-mono text-[10px] text-slate-500">{{ item.hsn_code or '—' }}</span>
+                            </td>
+                            <td class="py-3 px-3.5 text-center whitespace-nowrap">
+                                <span class="px-2 py-0.5 rounded-full font-extrabold text-[11px] {% if item.stock <= item.reorder_level %}bg-rose-100 text-rose-700{% else %}bg-emerald-100 text-emerald-800{% endif %}">
+                                    {{ item.stock }}
+                                </span>
+                                <span class="text-[10px] text-slate-500 block mt-0.5">Min: {{ item.reorder_level }}</span>
+                            </td>
+                            <td class="py-3 px-3.5 text-center whitespace-nowrap">
+                                <a href="/item_master/toggle/{{ item.id }}/is_online" title="Click to toggle Online visibility" class="inline-block px-2.5 py-1 rounded-lg font-bold text-[10px] transition {% if item.is_online == 1 %}bg-blue-100 text-blue-800 hover:bg-blue-200{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">
+                                    {% if item.is_online == 1 %}🌐 Online + POS{% else %}🏪 POS Only{% endif %}
+                                </a>
+                            </td>
+                            <td class="py-3 px-3.5 text-center whitespace-nowrap">
+                                <a href="/item_master/toggle/{{ item.id }}/is_active" title="Click to toggle Active/Inactive" class="inline-block px-2.5 py-1 rounded-full font-bold text-[10px] transition {% if item.is_active == 1 %}bg-emerald-600 text-white hover:bg-emerald-700{% else %}bg-rose-100 text-rose-700 hover:bg-rose-200{% endif %}">
+                                    {% if item.is_active == 1 %}Active{% else %}Inactive{% endif %}
+                                </a>
+                            </td>
+                            <td class="py-3 px-3.5 text-center whitespace-nowrap">
+                                <div class="inline-flex items-center gap-1.5">
+                                    <button type="button" onclick='openEditModal({{ item | tojson | safe }})' class="bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition">
+                                        ✏️ Edit
+                                    </button>
+                                    <form action="/item_master" method="POST" onsubmit="return confirm('Delete {{ item.name }} from Item Master?');" class="inline">
+                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="prod_id" value="{{ item.id }}">
+                                        <button type="submit" class="bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 px-2 py-1.5 rounded-lg font-bold text-[11px] transition">
+                                            🗑️
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="10" class="text-center py-8 text-slate-400 text-xs">No items in Item Master yet. Click "Add New Item" to create your first SKU.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add / Edit Item Master Modal -->
+    <div id="item-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white w-full max-w-3xl rounded-3xl shadow-2xl border border-slate-200 p-6 my-8">
+            <div class="flex justify-between items-center border-b border-slate-200 pb-3 mb-4">
+                <h2 id="modal-title" class="text-lg font-black text-slate-900">➕ Add New Master Item</h2>
+                <button type="button" onclick="closeItemModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold">✕</button>
+            </div>
+
+            <form action="/item_master" method="POST" class="space-y-4 text-xs">
+                <input type="hidden" name="action" id="form-action" value="create">
+                <input type="hidden" name="prod_id" id="form-prod-id" value="">
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">SKU Code (Auto if blank)</label>
+                        <input type="text" name="sku_code" id="f-sku" placeholder="e.g. SG-0001" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Barcode (EAN / Scan)</label>
+                        <input type="text" name="barcode" id="f-barcode" placeholder="Scan or enter barcode" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Brand</label>
+                        <input type="text" name="brand" id="f-brand" placeholder="e.g. Aashirvaad, Tata" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="sm:col-span-2">
+                        <label class="block font-bold text-slate-700 mb-1">Item Name *</label>
+                        <input type="text" name="name" id="f-name" required placeholder="e.g. Aashirvaad Shudh Chakki Atta 5kg" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Category *</label>
+                        <select name="category" id="f-category" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 font-semibold outline-none">
+                            <option value="Grains & Flour">Grains & Flour</option>
+                            <option value="Essentials">Essentials</option>
+                            <option value="Oils & Ghee">Oils & Ghee</option>
+                            <option value="Pulses & Dal">Pulses & Dal</option>
+                            <option value="Beverages">Beverages</option>
+                            <option value="Cosmetics">Cosmetics</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Unit</label>
+                        <select name="unit" id="f-unit" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 font-semibold outline-none">
+                            <option value="pcs">pcs</option>
+                            <option value="kg">kg</option>
+                            <option value="g">g</option>
+                            <option value="L">L</option>
+                            <option value="ml">ml</option>
+                            <option value="pack">pack</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">MRP (₹)</label>
+                        <input type="number" step="0.01" name="mrp" id="f-mrp" placeholder="0.00" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Selling Price (₹) *</label>
+                        <input type="number" step="0.01" name="price" id="f-price" required placeholder="0.00" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Cost Price (₹)</label>
+                        <input type="number" step="0.01" name="cost_price" id="f-cost" placeholder="0.00" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">GST %</label>
+                        <select name="gst_rate" id="f-gst" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 font-semibold outline-none">
+                            <option value="0">0%</option>
+                            <option value="5" selected>5%</option>
+                            <option value="12">12%</option>
+                            <option value="18">18%</option>
+                            <option value="28">28%</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">HSN Code</label>
+                        <input type="text" name="hsn_code" id="f-hsn" placeholder="e.g. 1101" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Current Stock *</label>
+                        <input type="number" name="stock" id="f-stock" value="0" required class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Reorder Min Level</label>
+                        <input type="number" name="reorder_level" id="f-reorder" value="15" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Rack Location</label>
+                        <input type="text" name="rack_location" id="f-rack" value="Rack-1 Shelf A" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Batch No</label>
+                        <input type="text" name="batch_no" id="f-batch" value="GENERAL" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Expiry Date</label>
+                        <input type="date" name="expiry_date" id="f-expiry" value="2027-12-31" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Product Image URL</label>
+                        <input type="text" name="image_url" id="f-image" placeholder="https://..." class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-6 pt-2 border-t border-slate-200">
+                    <label class="inline-flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
+                        <input type="checkbox" name="is_online" id="f-online" value="1" checked class="w-4 h-4 accent-emerald-600">
+                        <span>🌐 Show in Online Storefront</span>
+                    </label>
+                    <label class="inline-flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
+                        <input type="checkbox" name="is_active" id="f-active" value="1" checked class="w-4 h-4 accent-emerald-600">
+                        <span>✅ Item Active (Available for Billing)</span>
+                    </label>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-3">
+                    <button type="button" onclick="closeItemModal()" class="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold">Cancel</button>
+                    <button type="submit" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow">💾 Save Master Item</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- CSV Import Modal -->
+    <div id="csv-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-200 p-6 space-y-4 text-xs">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 class="text-base font-black text-slate-900">📥 Bulk Import Item Master (CSV)</h3>
+                <button type="button" onclick="document.getElementById('csv-modal').classList.add('hidden')" class="w-7 h-7 rounded-full bg-slate-100 font-bold">✕</button>
+            </div>
+            <p class="text-slate-600 leading-relaxed">Upload a CSV exported from Item Master (or with columns: <code class="bg-slate-100 px-1 rounded">sku_code, barcode, name, brand, category, unit, mrp, price, cost_price, gst_rate, hsn_code, stock, reorder_level</code>). Existing barcodes/SKUs are updated automatically.</p>
+            <form action="/item_master/import_csv" method="POST" enctype="multipart/form-data" class="space-y-3">
+                <input type="file" name="csv_file" accept=".csv" required class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50">
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="document.getElementById('csv-modal').classList.add('hidden')" class="px-4 py-2 rounded-xl bg-slate-100 font-bold">Cancel</button>
+                    <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold">Upload & Sync</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openItemModal() {
+            document.getElementById('modal-title').innerText = '➕ Add New Master Item';
+            document.getElementById('form-action').value = 'create';
+            document.getElementById('form-prod-id').value = '';
+            document.getElementById('f-sku').value = '';
+            document.getElementById('f-barcode').value = '';
+            document.getElementById('f-brand').value = '';
+            document.getElementById('f-name').value = '';
+            document.getElementById('f-category').value = 'Essentials';
+            document.getElementById('f-unit').value = 'pcs';
+            document.getElementById('f-mrp').value = '';
+            document.getElementById('f-price').value = '';
+            document.getElementById('f-cost').value = '';
+            document.getElementById('f-gst').value = '5';
+            document.getElementById('f-hsn').value = '';
+            document.getElementById('f-stock').value = '0';
+            document.getElementById('f-reorder').value = '15';
+            document.getElementById('f-rack').value = 'Rack-1 Shelf A';
+            document.getElementById('f-batch').value = 'GENERAL';
+            document.getElementById('f-expiry').value = '2027-12-31';
+            document.getElementById('f-image').value = '';
+            document.getElementById('f-online').checked = true;
+            document.getElementById('f-active').checked = true;
+            document.getElementById('item-modal').classList.remove('hidden');
+        }
+
+        function openEditModal(item) {
+            document.getElementById('modal-title').innerText = '✏️ Edit Master Item (' + (item.sku_code || '#' + item.id) + ')';
+            document.getElementById('form-action').value = 'update';
+            document.getElementById('form-prod-id').value = item.id;
+            document.getElementById('f-sku').value = item.sku_code || '';
+            document.getElementById('f-barcode').value = item.barcode || '';
+            document.getElementById('f-brand').value = item.brand || '';
+            document.getElementById('f-name').value = item.name || '';
+            document.getElementById('f-category').value = item.category || 'Essentials';
+            document.getElementById('f-unit').value = item.unit || 'pcs';
+            document.getElementById('f-mrp').value = item.mrp || 0;
+            document.getElementById('f-price').value = item.price || 0;
+            document.getElementById('f-cost').value = item.cost_price || 0;
+            document.getElementById('f-gst').value = String(parseInt(item.gst_rate || 5, 10));
+            document.getElementById('f-hsn').value = item.hsn_code || '';
+            document.getElementById('f-stock').value = item.stock || 0;
+            document.getElementById('f-reorder').value = item.reorder_level || 15;
+            document.getElementById('f-rack').value = item.rack_location || 'Rack-1 Shelf A';
+            document.getElementById('f-batch').value = item.batch_no || 'GENERAL';
+            document.getElementById('f-expiry').value = item.expiry_date || '2027-12-31';
+            document.getElementById('f-image').value = item.image_url || '';
+            document.getElementById('f-online').checked = Number(item.is_online) === 1;
+            document.getElementById('f-active').checked = Number(item.is_active) === 1;
+            document.getElementById('item-modal').classList.remove('hidden');
+        }
+
+        function closeItemModal() {
+            document.getElementById('item-modal').classList.add('hidden');
+        }
+
+        function filterMasterTable() {
+            const q = document.getElementById('master-search').value.toLowerCase().trim();
+            const cat = document.getElementById('filter-category').value;
+            const ch = document.getElementById('filter-channel').value;
+
+            document.querySelectorAll('.master-row').forEach(row => {
+                const hay = row.getAttribute('data-search') || '';
+                const rCat = row.getAttribute('data-category') || '';
+                const rOnline = row.getAttribute('data-online') || '1';
+                const rActive = row.getAttribute('data-active') || '1';
+
+                const matchQ = !q || hay.includes(q);
+                const matchCat = cat === 'ALL' || rCat === cat;
+                let matchCh = true;
+                if (ch === 'ONLINE') matchCh = rOnline === '1';
+                else if (ch === 'POS_ONLY') matchCh = rOnline === '0';
+                else if (ch === 'ACTIVE') matchCh = rActive === '1';
+                else if (ch === 'INACTIVE') matchCh = rActive === '0';
+
+                row.style.display = (matchQ && matchCat && matchCh) ? '' : 'none';
+            });
+        }
+    </script>
+</body>
+</html>

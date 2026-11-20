@@ -2,6 +2,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 import sqlite3
 from datetime import datetime
 import json
+import csv
+import io
 from database import db
 from firebase_admin import firestore
 
@@ -27,6 +29,38 @@ def _ensure_order_columns(cursor, conn):
             conn.commit()
         except sqlite3.OperationalError:
             pass
+
+def _ensure_item_master_columns(cursor, conn):
+    migrations = [
+        "ALTER TABLE products ADD COLUMN sku_code TEXT DEFAULT ''",
+        "ALTER TABLE products ADD COLUMN brand TEXT DEFAULT ''",
+        "ALTER TABLE products ADD COLUMN unit TEXT DEFAULT 'pcs'",
+        "ALTER TABLE products ADD COLUMN mrp REAL DEFAULT 0.0",
+        "ALTER TABLE products ADD COLUMN cost_price REAL DEFAULT 0.0",
+        "ALTER TABLE products ADD COLUMN hsn_code TEXT DEFAULT ''",
+        "ALTER TABLE products ADD COLUMN reorder_level INTEGER DEFAULT 15",
+        "ALTER TABLE products ADD COLUMN is_online INTEGER DEFAULT 1",
+        "ALTER TABLE products ADD COLUMN is_active INTEGER DEFAULT 1",
+        "ALTER TABLE products ADD COLUMN image_url TEXT DEFAULT ''"
+    ]
+    for col_sql in migrations:
+        try:
+            cursor.execute(col_sql)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
+    try:
+        cursor.execute("UPDATE products SET mrp = price WHERE mrp IS NULL OR mrp <= 0")
+        cursor.execute("UPDATE products SET cost_price = price WHERE cost_price IS NULL OR cost_price < 0")
+        cursor.execute("UPDATE products SET unit = 'pcs' WHERE unit IS NULL OR TRIM(unit) = ''")
+        cursor.execute("UPDATE products SET reorder_level = 15 WHERE reorder_level IS NULL")
+        cursor.execute("UPDATE products SET is_online = 1 WHERE is_online IS NULL")
+        cursor.execute("UPDATE products SET is_active = 1 WHERE is_active IS NULL")
+        cursor.execute("UPDATE products SET sku_code = 'SG-' || PRINTF('%04d', id) WHERE sku_code IS NULL OR TRIM(sku_code) = ''")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
 
 @admin_bp.route("/admin_login", methods=["GET", "POST"])
 def admin_login():
@@ -121,6 +155,277 @@ def pack_order(order_id):
     conn.close()
     flash(f"Order #{order_id} marked as Packed successfully!")
     return redirect(url_for("admin.online_orders"))
+
+@admin_bp.route("/item_master", methods=["GET", "POST"])
+@admin_required
+def item_master():
+    conn = sqlite3.connect("store_pos.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    _ensure_item_master_columns(cursor, conn)
+
+    if request.method == "POST":
+        action = request.form.get("action", "create")
+        try:
+            if action == "create":
+                barcode = (request.form.get("barcode") or "").strip()
+                sku_code = (request.form.get("sku_code") or "").strip()
+                name = (request.form.get("name") or "").strip()
+                brand = (request.form.get("brand") or "").strip()
+                category = (request.form.get("category") or "Essentials").strip()
+                unit = (request.form.get("unit") or "pcs").strip()
+                mrp = float(request.form.get("mrp") or 0.0)
+                price = float(request.form.get("price") or 0.0)
+                cost_price = float(request.form.get("cost_price") or 0.0)
+                gst_rate = float(request.form.get("gst_rate") or 5.0)
+                hsn_code = (request.form.get("hsn_code") or "").strip()
+                stock = int(request.form.get("stock") or 0)
+                reorder_level = int(request.form.get("reorder_level") or 15)
+                batch_no = (request.form.get("batch_no") or "GENERAL").strip()
+                expiry_date = (request.form.get("expiry_date") or "2027-12-31").strip()
+                rack_location = (request.form.get("rack_location") or "Rack-1 Shelf A").strip()
+                image_url = (request.form.get("image_url") or "").strip()
+                is_online = 1 if request.form.get("is_online") == "1" else 0
+                is_active = 1 if request.form.get("is_active") == "1" else 0
+
+                if mrp <= 0:
+                    mrp = price
+
+                cursor.execute("""
+                    INSERT INTO products (
+                        barcode, sku_code, name, brand, category, unit,
+                        mrp, price, cost_price, gst_rate, hsn_code,
+                        stock, reorder_level, batch_no, expiry_date, rack_location,
+                        image_url, is_online, is_active
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    barcode, sku_code, name, brand, category, unit,
+                    mrp, price, cost_price, gst_rate, hsn_code,
+                    stock, reorder_level, batch_no, expiry_date, rack_location,
+                    image_url, is_online, is_active
+                ))
+                new_id = cursor.lastrowid
+                if not sku_code:
+                    cursor.execute("UPDATE products SET sku_code = ? WHERE id = ?", (f"SG-{new_id:04d}", new_id))
+                conn.commit()
+                flash(f"✅ Item '{name}' added to Item Master!")
+
+            elif action == "update":
+                prod_id = int(request.form.get("prod_id"))
+                barcode = (request.form.get("barcode") or "").strip()
+                sku_code = (request.form.get("sku_code") or "").strip() or f"SG-{prod_id:04d}"
+                name = (request.form.get("name") or "").strip()
+                brand = (request.form.get("brand") or "").strip()
+                category = (request.form.get("category") or "Essentials").strip()
+                unit = (request.form.get("unit") or "pcs").strip()
+                mrp = float(request.form.get("mrp") or 0.0)
+                price = float(request.form.get("price") or 0.0)
+                cost_price = float(request.form.get("cost_price") or 0.0)
+                gst_rate = float(request.form.get("gst_rate") or 5.0)
+                hsn_code = (request.form.get("hsn_code") or "").strip()
+                stock = int(request.form.get("stock") or 0)
+                reorder_level = int(request.form.get("reorder_level") or 15)
+                batch_no = (request.form.get("batch_no") or "GENERAL").strip()
+                expiry_date = (request.form.get("expiry_date") or "2027-12-31").strip()
+                rack_location = (request.form.get("rack_location") or "Rack-1 Shelf A").strip()
+                image_url = (request.form.get("image_url") or "").strip()
+                is_online = 1 if request.form.get("is_online") == "1" else 0
+                is_active = 1 if request.form.get("is_active") == "1" else 0
+
+                if mrp <= 0:
+                    mrp = price
+
+                cursor.execute("""
+                    UPDATE products
+                    SET barcode = ?, sku_code = ?, name = ?, brand = ?, category = ?, unit = ?,
+                        mrp = ?, price = ?, cost_price = ?, gst_rate = ?, hsn_code = ?,
+                        stock = ?, reorder_level = ?, batch_no = ?, expiry_date = ?, rack_location = ?,
+                        image_url = ?, is_online = ?, is_active = ?
+                    WHERE id = ?
+                """, (
+                    barcode, sku_code, name, brand, category, unit,
+                    mrp, price, cost_price, gst_rate, hsn_code,
+                    stock, reorder_level, batch_no, expiry_date, rack_location,
+                    image_url, is_online, is_active, prod_id
+                ))
+                conn.commit()
+                flash(f"✅ Item Master updated for '{name}'!")
+
+            elif action == "delete":
+                prod_id = int(request.form.get("prod_id"))
+                cursor.execute("DELETE FROM products WHERE id = ?", (prod_id,))
+                conn.commit()
+                flash("🗑️ Item deleted from Item Master.")
+
+        except Exception as e:
+            flash(f"❌ Item Master Error: {str(e)}")
+
+        conn.close()
+        return redirect(url_for("admin.item_master"))
+
+    cursor.execute("SELECT * FROM products ORDER BY id DESC")
+    raw_products = cursor.fetchall()
+    conn.close()
+
+    items = []
+    for p in raw_products:
+        d = dict(p)
+        price = float(d.get("price") or 0.0)
+        mrp = float(d.get("mrp") or price)
+        cost = float(d.get("cost_price") or 0.0)
+        margin_pct = round(((price - cost) / price) * 100.0, 1) if price > 0 and cost > 0 else 0.0
+        d["price"] = price
+        d["mrp"] = mrp
+        d["cost_price"] = cost
+        d["margin_pct"] = margin_pct
+        d["sku_code"] = d.get("sku_code") or f"SG-{d['id']:04d}"
+        d["brand"] = d.get("brand") or ""
+        d["unit"] = d.get("unit") or "pcs"
+        d["hsn_code"] = d.get("hsn_code") or ""
+        d["reorder_level"] = int(d.get("reorder_level") if d.get("reorder_level") is not None else 15)
+        d["is_online"] = int(d.get("is_online") if d.get("is_online") is not None else 1)
+        d["is_active"] = int(d.get("is_active") if d.get("is_active") is not None else 1)
+        d["image_url"] = d.get("image_url") or ""
+        items.append(d)
+
+    return render_template("item_master.html", items=items, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+
+@admin_bp.route("/item_master/toggle/<int:prod_id>/<string:field>")
+@admin_required
+def toggle_item_master_flag(prod_id, field):
+    if field not in ("is_online", "is_active"):
+        return redirect(url_for("admin.item_master"))
+    conn = sqlite3.connect("store_pos.db")
+    cursor = conn.cursor()
+    _ensure_item_master_columns(cursor, conn)
+    cursor.execute(f"UPDATE products SET {field} = CASE WHEN COALESCE({field}, 1) = 1 THEN 0 ELSE 1 END WHERE id = ?", (prod_id,))
+    conn.commit()
+    conn.close()
+    flash("Updated item visibility/status!")
+    return redirect(url_for("admin.item_master"))
+
+@admin_bp.route("/item_master/export_csv")
+@admin_required
+def export_item_master_csv():
+    conn = sqlite3.connect("store_pos.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    _ensure_item_master_columns(cursor, conn)
+    cursor.execute("SELECT * FROM products ORDER BY id ASC")
+    rows = cursor.fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    headers = [
+        "id", "sku_code", "barcode", "name", "brand", "category", "unit",
+        "mrp", "price", "cost_price", "gst_rate", "hsn_code",
+        "stock", "reorder_level", "batch_no", "expiry_date", "rack_location",
+        "is_online", "is_active", "image_url"
+    ]
+    writer.writerow(headers)
+    for r in rows:
+        d = dict(r)
+        writer.writerow([d.get(h, "") for h in headers])
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment;filename=Swaraj_Grocery_Item_Master.csv"}
+    )
+
+@admin_bp.route("/item_master/import_csv", methods=["POST"])
+@admin_required
+def import_item_master_csv():
+    file = request.files.get("csv_file")
+    if not file or not file.filename:
+        flash("❌ Please choose a CSV file to upload.")
+        return redirect(url_for("admin.item_master"))
+
+    try:
+        stream = io.StringIO(file.stream.read().decode("utf-8-sig"), newline=None)
+        reader = csv.DictReader(stream)
+        conn = sqlite3.connect("store_pos.db")
+        cursor = conn.cursor()
+        _ensure_item_master_columns(cursor, conn)
+
+        updated_count = 0
+        inserted_count = 0
+
+        for row in reader:
+            name = (row.get("name") or "").strip()
+            if not name:
+                continue
+            barcode = (row.get("barcode") or "").strip()
+            sku_code = (row.get("sku_code") or "").strip()
+            brand = (row.get("brand") or "").strip()
+            category = (row.get("category") or "Essentials").strip()
+            unit = (row.get("unit") or "pcs").strip()
+            price = float(row.get("price") or 0.0)
+            mrp = float(row.get("mrp") or price)
+            cost_price = float(row.get("cost_price") or 0.0)
+            gst_rate = float(row.get("gst_rate") or 5.0)
+            hsn_code = (row.get("hsn_code") or "").strip()
+            stock = int(float(row.get("stock") or 0))
+            reorder_level = int(float(row.get("reorder_level") or 15))
+            batch_no = (row.get("batch_no") or "GENERAL").strip()
+            expiry_date = (row.get("expiry_date") or "2027-12-31").strip()
+            rack_location = (row.get("rack_location") or "Rack-1 Shelf A").strip()
+            is_online = int(float(row.get("is_online") if row.get("is_online") not in (None, "") else 1))
+            is_active = int(float(row.get("is_active") if row.get("is_active") not in (None, "") else 1))
+            image_url = (row.get("image_url") or "").strip()
+
+            existing = None
+            if barcode:
+                cursor.execute("SELECT id FROM products WHERE barcode = ?", (barcode,))
+                existing = cursor.fetchone()
+            if not existing and sku_code:
+                cursor.execute("SELECT id FROM products WHERE sku_code = ?", (sku_code,))
+                existing = cursor.fetchone()
+
+            if existing:
+                cursor.execute("""
+                    UPDATE products
+                    SET name = ?, brand = ?, category = ?, unit = ?,
+                        mrp = ?, price = ?, cost_price = ?, gst_rate = ?, hsn_code = ?,
+                        stock = ?, reorder_level = ?, batch_no = ?, expiry_date = ?, rack_location = ?,
+                        is_online = ?, is_active = ?, image_url = COALESCE(NULLIF(?, ''), image_url)
+                    WHERE id = ?
+                """, (
+                    name, brand, category, unit,
+                    mrp, price, cost_price, gst_rate, hsn_code,
+                    stock, reorder_level, batch_no, expiry_date, rack_location,
+                    is_online, is_active, image_url, existing[0]
+                ))
+                updated_count += 1
+            else:
+                cursor.execute("""
+                    INSERT INTO products (
+                        barcode, sku_code, name, brand, category, unit,
+                        mrp, price, cost_price, gst_rate, hsn_code,
+                        stock, reorder_level, batch_no, expiry_date, rack_location,
+                        is_online, is_active, image_url
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    barcode, sku_code, name, brand, category, unit,
+                    mrp, price, cost_price, gst_rate, hsn_code,
+                    stock, reorder_level, batch_no, expiry_date, rack_location,
+                    is_online, is_active, image_url
+                ))
+                new_id = cursor.lastrowid
+                if not sku_code:
+                    cursor.execute("UPDATE products SET sku_code = ? WHERE id = ?", (f"SG-{new_id:04d}", new_id))
+                inserted_count += 1
+
+        conn.commit()
+        conn.close()
+        flash(f"✅ CSV Import complete: {inserted_count} added, {updated_count} updated.")
+    except Exception as e:
+        flash(f"❌ CSV Import Error: {str(e)}")
+
+    return redirect(url_for("admin.item_master"))
 
 @admin_bp.route("/inventory", methods=["GET", "POST"])
 @admin_required
@@ -273,7 +578,8 @@ def settle_khata(bill_id):
 def low_stock_alert():
     conn = sqlite3.connect("store_pos.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT id, barcode, name, price, stock, batch_no FROM products WHERE stock <= 15 ORDER BY stock ASC")
+    _ensure_item_master_columns(cursor, conn)
+    cursor.execute("SELECT id, barcode, name, price, stock, batch_no FROM products WHERE COALESCE(is_active, 1) = 1 AND stock <= COALESCE(reorder_level, 15) ORDER BY stock ASC")
     products = cursor.fetchall()
     conn.close()
     return render_template("low_stock.html", products=products, admin_navbar=ADMIN_NAVBAR_SNIPPET)
@@ -466,6 +772,7 @@ ADMIN_NAVBAR_SNIPPET = """
         <a href="/online_orders" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold transition shadow-sm flex items-center gap-1">
             🔔 Orders <span id="order-badge" class="bg-rose-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-extrabold hidden">0</span>
         </a>
+        <a href="/item_master" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-emerald-600 text-slate-200 hover:text-white transition shadow-sm">🗂️ Item Master</a>
         <a href="/inventory" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white transition shadow-sm">📦 Inventory</a>
         <a href="/product_images" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-pink-600 text-slate-200 hover:text-white transition shadow-sm">🖼️ Online Images</a>
         <a href="/low_stock" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-600 text-slate-200 hover:text-white transition shadow-sm">⚠️ Low Stock</a>
