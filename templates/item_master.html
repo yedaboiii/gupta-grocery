@@ -27,7 +27,7 @@
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b border-slate-200 pb-5 gap-4">
             <div>
                 <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">🗂️ Item Master (Central SKU Catalog)</h1>
-                <p class="text-xs text-slate-500 mt-1">Keep the same Item Name across pack sizes (e.g., 5kg, 1kg, 500g) to group variants automatically on the online storefront.</p>
+                <p class="text-xs text-slate-500 mt-1">Manage SKUs, kg weight variants (e.g., Toor Dal 1kg → 500g, 250g, 2kg, 5kg), cost & +₹ markup, GST/HSN, and online store visibility.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <a href="/item_master/export_csv" class="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-3.5 py-2 rounded-xl text-xs font-bold transition">
@@ -148,6 +148,9 @@
                                             {% if item.pack_size %}
                                             <span class="ml-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-extrabold">{{ item.pack_size }}</span>
                                             {% endif %}
+                                            {% if item.base_product_id %}
+                                            <span class="ml-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-extrabold">{{ item.weight_kg }}kg linked</span>
+                                            {% endif %}
                                         </div>
                                         <div class="text-[11px] text-slate-500">{{ item.brand or 'Generic' }} • {{ item.rack_location }}</div>
                                         {% if item.supplier_name %}
@@ -203,7 +206,7 @@
                             </td>
                             <td class="py-3 px-3.5 text-center whitespace-nowrap">
                                 <div class="inline-flex items-center gap-1">
-                                    <button type="button" onclick='openVariantModal({{ item | tojson | safe }})' title="Add another pack size variant (e.g. 1kg, 500g) for this item" class="bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 px-2 py-1.5 rounded-lg font-bold text-[11px] transition">
+                                    <button type="button" onclick='openVariantModal({{ item | tojson | safe }})' title="Add another pack size variant (e.g. 500g, 250g, 2kg, 5kg)" class="bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white border border-indigo-200 px-2 py-1.5 rounded-lg font-bold text-[11px] transition">
                                         ➕ Variant
                                     </button>
                                     <button type="button" onclick='openEditModal({{ item | tojson | safe }})' class="bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition">
@@ -241,6 +244,23 @@
             <form action="/item_master" method="POST" class="space-y-4 text-xs">
                 <input type="hidden" name="action" id="form-action" value="create">
                 <input type="hidden" name="prod_id" id="form-prod-id" value="">
+                <input type="hidden" name="base_product_id" id="f-base-id" value="">
+                <input type="hidden" name="weight_kg" id="f-weight-kg" value="1.0">
+
+                <!-- Linked kg Weight Variant Quick-Presets (Shown when cloning a kg base item like Toor Dal 1kg) -->
+                <div id="kg-variant-box" class="hidden bg-indigo-50 border border-indigo-200 rounded-2xl p-3 space-y-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <span class="font-extrabold text-indigo-950">⚖️ Auto-Price from 1kg Base Stock (kg multiplier)</span>
+                        <span id="kg-base-info" class="text-[11px] font-bold text-indigo-700"></span>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5">
+                        <button type="button" onclick="applyWeightPreset('250g', 0.25)" class="px-2.5 py-1 rounded-lg bg-white border border-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-[11px] transition">250g (0.25 kg)</button>
+                        <button type="button" onclick="applyWeightPreset('500g', 0.5)" class="px-2.5 py-1 rounded-lg bg-white border border-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-[11px] transition">500g (0.5 kg)</button>
+                        <button type="button" onclick="applyWeightPreset('1kg', 1.0)" class="px-2.5 py-1 rounded-lg bg-white border border-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-[11px] transition">1kg (1.0 kg)</button>
+                        <button type="button" onclick="applyWeightPreset('2kg', 2.0)" class="px-2.5 py-1 rounded-lg bg-white border border-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-[11px] transition">2kg (2.0 kg)</button>
+                        <button type="button" onclick="applyWeightPreset('5kg', 5.0)" class="px-2.5 py-1 rounded-lg bg-white border border-indigo-300 hover:bg-indigo-600 hover:text-white font-bold text-[11px] transition">5kg (5.0 kg)</button>
+                    </div>
+                </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
@@ -260,11 +280,11 @@
                 <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
                     <div class="sm:col-span-2">
                         <label class="block font-bold text-slate-700 mb-1">Item Name (Keep identical to group variants) *</label>
-                        <input type="text" name="name" id="f-name" required placeholder="e.g. Aashirvaad Shudh Chakki Atta" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                        <input type="text" name="name" id="f-name" required placeholder="e.g. Toor Dal" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
                     </div>
                     <div>
                         <label class="block font-bold text-indigo-800 mb-1">Pack Size (Variant)</label>
-                        <input type="text" name="pack_size" id="f-pack" placeholder="e.g. 5kg, 1kg, 500g" class="w-full p-2.5 border border-indigo-300 rounded-xl bg-indigo-50/40 focus:bg-white font-bold outline-none">
+                        <input type="text" name="pack_size" id="f-pack" placeholder="e.g. 1kg, 500g, 250g" class="w-full p-2.5 border border-indigo-300 rounded-xl bg-indigo-50/40 focus:bg-white font-bold outline-none">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">Category *</label>
@@ -348,7 +368,7 @@
                     </div>
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">HSN Code</label>
-                        <input type="text" name="hsn_code" id="f-hsn" placeholder="e.g. 1101" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+                        <input type="text" name="hsn_code" id="f-hsn" placeholder="e.g. 0713" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
                     </div>
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">Current Stock *</label>
@@ -417,6 +437,8 @@
     </div>
 
     <script>
+        let activeBaseItem = null;
+
         function updateProfitPreview() {
             const cost = parseFloat(document.getElementById('f-cost').value) || 0;
             const sell = parseFloat(document.getElementById('f-price').value) || 0;
@@ -464,7 +486,36 @@
             updateProfitPreview();
         }
 
+        function applyWeightPreset(packLabel, weightKg) {
+            document.getElementById('f-pack').value = packLabel;
+            document.getElementById('f-weight-kg').value = weightKg;
+            if (!activeBaseItem) return;
+
+            const basePrice = parseFloat(activeBaseItem.price) || 0;
+            const baseMrp = parseFloat(activeBaseItem.mrp) || basePrice;
+            const baseCost = parseFloat(activeBaseItem.cost_price) || 0;
+            const baseStock = parseFloat(activeBaseItem.stock) || 0;
+
+            const calcSell = (basePrice * weightKg).toFixed(2);
+            const calcMrp = (baseMrp * weightKg).toFixed(2);
+            const calcCost = (baseCost * weightKg).toFixed(2);
+            const calcStock = Math.floor(baseStock / weightKg);
+
+            document.getElementById('f-price').value = calcSell;
+            document.getElementById('f-mrp').value = calcMrp;
+            document.getElementById('f-cost').value = calcCost;
+            document.getElementById('f-stock').value = calcStock;
+            if (baseCost > 0) {
+                document.getElementById('f-markup-rs').value = (parseFloat(calcSell) - parseFloat(calcCost)).toFixed(2);
+            }
+            updateProfitPreview();
+        }
+
         function openItemModal() {
+            activeBaseItem = null;
+            document.getElementById('kg-variant-box').classList.add('hidden');
+            document.getElementById('f-base-id').value = '';
+            document.getElementById('f-weight-kg').value = '1.0';
             document.getElementById('modal-title').innerText = '➕ Add New Master Item';
             document.getElementById('form-action').value = 'create';
             document.getElementById('form-prod-id').value = '';
@@ -495,9 +546,14 @@
         }
 
         function openVariantModal(item) {
+            const isKg = (item.unit || '').toLowerCase() === 'kg';
+            activeBaseItem = isKg ? item : null;
+
             document.getElementById('modal-title').innerText = '➕ Add Pack Size Variant for "' + (item.name || '') + '"';
             document.getElementById('form-action').value = 'create';
             document.getElementById('form-prod-id').value = '';
+            document.getElementById('f-base-id').value = isKg ? item.id : '';
+            document.getElementById('f-weight-kg').value = '1.0';
             document.getElementById('f-sku').value = '';
             document.getElementById('f-barcode').value = '';
             document.getElementById('f-brand').value = item.brand || '';
@@ -520,15 +576,29 @@
             document.getElementById('f-image').value = item.image_url || '';
             document.getElementById('f-online').checked = Number(item.is_online) === 1;
             document.getElementById('f-active').checked = true;
+
+            const kgBox = document.getElementById('kg-variant-box');
+            if (isKg) {
+                kgBox.classList.remove('hidden');
+                document.getElementById('kg-base-info').innerText =
+                    'Base: ₹' + Number(item.price || 0).toFixed(2) + '/kg • Stock: ' + (item.stock || 0) + ' kg';
+            } else {
+                kgBox.classList.add('hidden');
+            }
+
             updateProfitPreview();
             document.getElementById('item-modal').classList.remove('hidden');
             setTimeout(function () { document.getElementById('f-pack').focus(); }, 50);
         }
 
         function openEditModal(item) {
+            activeBaseItem = null;
+            document.getElementById('kg-variant-box').classList.add('hidden');
             document.getElementById('modal-title').innerText = '✏️ Edit Master Item (' + (item.sku_code || '#' + item.id) + ')';
             document.getElementById('form-action').value = 'update';
             document.getElementById('form-prod-id').value = item.id;
+            document.getElementById('f-base-id').value = item.base_product_id || '';
+            document.getElementById('f-weight-kg').value = item.weight_kg || 1.0;
             document.getElementById('f-sku').value = item.sku_code || '';
             document.getElementById('f-barcode').value = item.barcode || '';
             document.getElementById('f-brand').value = item.brand || '';

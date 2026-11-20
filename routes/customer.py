@@ -12,6 +12,8 @@ def _ensure_storefront_columns(cursor, conn):
       "ALTER TABLE products ADD COLUMN mrp REAL DEFAULT 0.0",
       "ALTER TABLE products ADD COLUMN is_online INTEGER DEFAULT 1",
       "ALTER TABLE products ADD COLUMN is_active INTEGER DEFAULT 1",
+      "ALTER TABLE products ADD COLUMN base_product_id INTEGER DEFAULT NULL",
+      "ALTER TABLE products ADD COLUMN weight_kg REAL DEFAULT 1.0",
       "ALTER TABLE bills ADD COLUMN delivery_address TEXT DEFAULT ''",
       "ALTER TABLE bills ADD COLUMN order_status TEXT DEFAULT 'Unpacked'",
       "ALTER TABLE bills ADD COLUMN order_source TEXT DEFAULT 'POS'",
@@ -25,6 +27,9 @@ def _ensure_storefront_columns(cursor, conn):
   try:
     cursor.execute(
         "UPDATE products SET mrp = price WHERE mrp IS NULL OR mrp <= 0"
+    )
+    cursor.execute(
+        "UPDATE products SET weight_kg = 1.0 WHERE weight_kg IS NULL OR weight_kg <= 0"
     )
     conn.commit()
   except sqlite3.OperationalError:
@@ -50,7 +55,6 @@ def customer_shop():
   products = cursor.fetchall()
   conn.close()
 
-  # Group products sharing the same item name into variant cards (e.g. 5kg, 1kg, 500g)
   grouped_map = {}
   grouped_products = []
 
@@ -131,6 +135,7 @@ def online_checkout():
     gst_total = 0.0
     summary_parts = []
     processed_cart = []
+    synced_bases = set()
 
     for p_id_str, item in cart_items.items():
       try:
@@ -140,20 +145,24 @@ def online_checkout():
       qty = max(1, int(item.get("qty", 1)))
 
       cursor.execute(
-          "SELECT id, name, pack_size, price, stock, gst_rate FROM products WHERE id = ?",
+          "SELECT id, name, pack_size, price, stock, gst_rate, base_product_id, COALESCE(weight_kg, 1.0)"
+          " FROM products WHERE id = ?",
           (p_id,),
       )
       prod = cursor.fetchone()
       if prod:
-        _, raw_name, pack_size, price, stock, gst_rate = prod
+        _, raw_name, pack_size, price, stock, gst_rate, base_prod_id, weight_kg = prod
         pack_str = (pack_size or "").strip()
         name = f"{raw_name} ({pack_str})" if pack_str and f"({pack_str})" not in raw_name else raw_name
         price = float(price or 0.0)
         gst_rate = float(gst_rate if gst_rate is not None else 5.0)
+        weight_kg = float(weight_kg or 1.0)
       else:
         name = item.get("name", "Product")
         price = float(item.get("price", 0.0) or 0.0)
         gst_rate = float(item.get("gst", 5.0) or 5.0)
+        base_prod_id = None
+        weight_kg = 1.0
 
       line_total = round(price * qty, 2)
       item_gst = round((line_total * gst_rate) / (100.0 + gst_rate), 2) if gst_rate > 0 else 0.0
@@ -170,9 +179,35 @@ def online_checkout():
       })
 
       if prod:
-        cursor.execute(
-            "UPDATE products SET stock = MAX(0, stock - ?) WHERE id = ?", (qty, p_id)
-        )
+        if base_prod_id:
+          kg_deducted = round(qty * weight_kg, 3)
+          cursor.execute(
+              "UPDATE products SET stock = MAX(0, ROUND(stock - ?, 3)) WHERE id = ?",
+              (kg_deducted, base_prod_id),
+          )
+          synced_bases.add(base_prod_id)
+        else:
+          cursor.execute(
+              "UPDATE products SET stock = MAX(0, ROUND(stock - ?, 3)) WHERE id = ?",
+              (qty, p_id),
+          )
+          synced_bases.add(p_id)
+
+    for b_id in synced_bases:
+      cursor.execute("SELECT stock FROM products WHERE id = ?", (b_id,))
+      rem_row = cursor.fetchone()
+      rem_kg = float(rem_row[0] or 0.0) if rem_row else 0.0
+      cursor.execute(
+          "SELECT id, COALESCE(weight_kg, 1.0) FROM products WHERE base_product_id = ?",
+          (b_id,),
+      )
+      for v_id, v_w in cursor.fetchall():
+        v_mult = float(v_w or 1.0)
+        if v_mult > 0:
+          cursor.execute(
+              "UPDATE products SET stock = ? WHERE id = ?",
+              (int(rem_kg // v_mult), v_id),
+          )
 
     subtotal = round(subtotal, 2)
     gst_total = round(gst_total, 2)
