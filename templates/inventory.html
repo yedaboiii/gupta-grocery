@@ -104,15 +104,18 @@
 
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
                 <h3 class="font-bold text-sm text-slate-800">Product Catalog</h3>
-                <input type="text" id="inv_search" onkeyup="filterInventoryTable()" placeholder="Search barcode, name, or category..." class="w-full sm:w-72 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 focus:bg-white outline-none">
+                <input type="text" id="inv_search" onkeyup="filterInventoryTable()" placeholder="Search item code, barcode, name, unit..." class="w-full sm:w-80 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 focus:bg-white outline-none">
             </div>
 
+            {% set prod_meta = {} %}
             <div class="overflow-x-auto">
                 <table class="w-full border-collapse border border-slate-200 text-xs">
                     <thead>
                         <tr class="bg-slate-200 text-left">
+                            <th class="p-2.5 border">Item Code</th>
                             <th class="p-2.5 border">Barcode</th>
                             <th class="p-2.5 border">Product Name</th>
+                            <th class="p-2.5 border">Unit (UoM)</th>
                             <th class="p-2.5 border">Category</th>
                             <th class="p-2.5 border">Price</th>
                             <th class="p-2.5 border">Stock</th>
@@ -121,13 +124,27 @@
                     </thead>
                     <tbody id="inventory-tbody">
                         {% for p in products %}
-                        {% set pname = p[2] or '' %}
+                        {% set pid = p['id'] if p['id'] is defined else p[0] %}
+                        {% set pbarcode = p['barcode'] if p['barcode'] is defined else p[1] %}
+                        {% set pname = (p['name'] if p['name'] is defined else p[2]) or '' %}
+                        {% set pprice = p['price'] if p['price'] is defined else p[3] %}
+                        {% set pstock = p['stock'] if p['stock'] is defined else p[4] %}
+                        {% set pcat = (p['category'] if p['category'] is defined else (p[9] if p|length > 9 else 'Essentials')) or 'Essentials' %}
+                        {% set item_code = (p['sku_code'] if (p['sku_code'] is defined and p['sku_code']) else ('SG-%04d'|format(pid|int))) %}
+                        {% set uom_val = (p['unit'] if (p['unit'] is defined and p['unit']) else 'pcs') %}
+                        {% set pack_val = (p['pack_size'] if (p['pack_size'] is defined and p['pack_size']) else '') %}
+                        {% set display_uom = (pack_val ~ ' (' ~ uom_val ~ ')') if (pack_val and pack_val|lower != uom_val|lower) else uom_val %}
+                        {% set _ = prod_meta.update({pname|lower: {'code': item_code, 'uom': display_uom}}) %}
                         <tr class="inv-row hover:bg-slate-50">
-                            <td class="p-2.5 border font-mono font-bold text-blue-800">{{ p[1] or '-' }}</td>
+                            <td class="p-2.5 border font-mono font-bold text-indigo-700">{{ item_code }}</td>
+                            <td class="p-2.5 border font-mono font-bold text-blue-800">{{ pbarcode or '-' }}</td>
                             <td class="p-2.5 border font-medium">{{ pname }}</td>
-                            <td class="p-2.5 border font-semibold text-emerald-700">{{ p[9] if (p|length > 9 and p[9]) else 'Essentials' }}</td>
-                            <td class="p-2.5 border">₹{{ '%.2f'|format((p[3] or 0)|float) }}</td>
-                            <td class="p-2.5 border font-bold text-green-600">{{ p[4] if p[4] is not none else 0 }}</td>
+                            <td class="p-2.5 border font-semibold text-slate-700">
+                                <span class="bg-slate-100 border border-slate-200 px-2 py-0.5 rounded font-mono text-[11px]">{{ display_uom }}</span>
+                            </td>
+                            <td class="p-2.5 border font-semibold text-emerald-700">{{ pcat }}</td>
+                            <td class="p-2.5 border">₹{{ '%.2f'|format((pprice or 0)|float) }}</td>
+                            <td class="p-2.5 border font-bold text-green-600">{{ pstock if pstock is not none else 0 }} {{ uom_val }}</td>
                             <td class="p-2.5 border text-center">
                                 <button type="button" onclick="selectProductTrack('{{ pname | e }}')" class="bg-slate-800 hover:bg-blue-700 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold transition">
                                     View History
@@ -136,7 +153,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="6" class="p-4 border text-center text-slate-400 font-medium">No products found in inventory.</td>
+                            <td colspan="8" class="p-4 border text-center text-slate-400 font-medium">No products found in inventory.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -187,8 +204,11 @@
                     <select id="track_product_filter" onchange="filterTrackList()" class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-semibold outline-none">
                         <option value="">All Products</option>
                         {% for p in products %}
-                        {% if p[2] %}
-                        <option value="{{ p[2] | e }}">{{ p[2] }}</option>
+                        {% set opt_name = p['name'] if p['name'] is defined else p[2] %}
+                        {% set opt_id = p['id'] if p['id'] is defined else p[0] %}
+                        {% set opt_code = (p['sku_code'] if (p['sku_code'] is defined and p['sku_code']) else ('SG-%04d'|format(opt_id|int))) %}
+                        {% if opt_name %}
+                        <option value="{{ opt_name | e }}">{{ opt_code }} - {{ opt_name }}</option>
                         {% endif %}
                         {% endfor %}
                     </select>
@@ -206,7 +226,7 @@
                 <div>
                     <label for="track_search" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Search / Reset</label>
                     <div class="flex gap-1.5">
-                        <input type="text" id="track_search" onkeyup="filterTrackList()" placeholder="Ref, time..." class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white outline-none">
+                        <input type="text" id="track_search" onkeyup="filterTrackList()" placeholder="Code, ref, time..." class="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white outline-none">
                         <button type="button" onclick="resetTrackFilters()" title="Reset all filters" class="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-xs font-bold transition">
                             Reset
                         </button>
@@ -221,7 +241,9 @@
                             <th class="p-2.5 border border-slate-700">Day</th>
                             <th class="p-2.5 border border-slate-700">Date (IST)</th>
                             <th class="p-2.5 border border-slate-700">Nagpur Timestamp</th>
+                            <th class="p-2.5 border border-slate-700">Item Code</th>
                             <th class="p-2.5 border border-slate-700">Product</th>
+                            <th class="p-2.5 border border-slate-700">Unit (UoM)</th>
                             <th class="p-2.5 border border-slate-700">Type</th>
                             <th class="p-2.5 border border-slate-700 text-right">Qty Change</th>
                             <th class="p-2.5 border border-slate-700 text-right">Stock After</th>
@@ -230,17 +252,24 @@
                     </thead>
                     <tbody id="track-tbody">
                         {% for t in tracks or [] %}
+                        {% set t_pid = t['product_id'] if t['product_id'] is defined else t[1] %}
+                        {% set t_pname = (t['product_name'] if t['product_name'] is defined else t[3]) or '' %}
                         {% set mtype = (t['movement_type'] if t['movement_type'] is defined else t[5])|upper %}
                         {% set qty_val = (t['qty_change'] if t['qty_change'] is defined else t[6])|float %}
                         {% set tdate = t['track_date'] if t['track_date'] is defined else t[10] %}
+                        {% set meta = prod_meta.get(t_pname|lower, {}) %}
+                        {% set t_code = (t['item_code'] if (t['item_code'] is defined and t['item_code']) else (meta.get('code') or ('SG-%04d'|format(t_pid|int) if t_pid else '-'))) %}
+                        {% set t_uom = (t['unit'] if (t['unit'] is defined and t['unit']) else (meta.get('uom') or 'pcs')) %}
                         <tr class="track-row hover:bg-slate-50"
-                            data-product="{{ (t['product_name'] if t['product_name'] is defined else t[3]) | e }}"
+                            data-product="{{ t_pname | e }}"
                             data-type="{{ mtype }}"
                             data-date="{{ tdate }}">
                             <td class="track-day-cell p-2.5 border font-semibold text-indigo-700">-</td>
                             <td class="p-2.5 border font-mono font-semibold text-slate-700">{{ tdate }}</td>
                             <td class="p-2.5 border font-mono text-blue-900 font-bold">{{ t['ist_timestamp'] if t['ist_timestamp'] is defined else t[11] }}</td>
-                            <td class="p-2.5 border font-semibold text-slate-900">{{ t['product_name'] if t['product_name'] is defined else t[3] }}</td>
+                            <td class="p-2.5 border font-mono font-bold text-indigo-700">{{ t_code }}</td>
+                            <td class="p-2.5 border font-semibold text-slate-900">{{ t_pname }}</td>
+                            <td class="p-2.5 border font-mono text-slate-700">{{ t_uom }}</td>
                             <td class="p-2.5 border">
                                 {% if mtype == 'SOLD' %}
                                 <span class="bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full font-extrabold text-[10px]">SOLD</span>
@@ -249,7 +278,7 @@
                                 {% endif %}
                             </td>
                             <td class="p-2.5 border text-right font-mono font-bold {% if mtype == 'SOLD' %}text-rose-600{% else %}text-emerald-700{% endif %}">
-                                {{ '%+.2f'|format(qty_val) if (qty_val % 1 != 0) else '%+d'|format(qty_val|int) }}
+                                {{ '%+.2f'|format(qty_val) if (qty_val % 1 != 0) else '%+d'|format(qty_val|int) }} {{ t_uom }}
                             </td>
                             <td class="p-2.5 border text-right font-mono text-slate-700">
                                 {% set sa = t['stock_after'] if t['stock_after'] is defined else t[7] %}
@@ -263,7 +292,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="8" class="p-5 border text-center text-slate-400 font-medium">No sold or purchased product entries recorded on the server yet.</td>
+                            <td colspan="10" class="p-5 border text-center text-slate-400 font-medium">No sold or purchased product entries recorded on the server yet.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
