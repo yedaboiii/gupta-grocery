@@ -52,7 +52,7 @@ def _ensure_item_master_columns(cursor, conn):
 
     try:
         cursor.execute("UPDATE products SET mrp = price WHERE mrp IS NULL OR mrp <= 0")
-        cursor.execute("UPDATE products SET cost_price = price WHERE cost_price IS NULL OR cost_price < 0")
+        cursor.execute("UPDATE products SET cost_price = 0.0 WHERE cost_price IS NULL OR cost_price < 0")
         cursor.execute("UPDATE products SET unit = 'pcs' WHERE unit IS NULL OR TRIM(unit) = ''")
         cursor.execute("UPDATE products SET reorder_level = 15 WHERE reorder_level IS NULL")
         cursor.execute("UPDATE products SET is_online = 1 WHERE is_online IS NULL")
@@ -264,21 +264,50 @@ def item_master():
         conn.close()
         return redirect(url_for("admin.item_master"))
 
+    # Fetch sold quantities per item_name to track cumulative profit on sold units
+    sold_map = {}
+    try:
+        cursor.execute("SELECT LOWER(TRIM(item_name)) AS key_name, SUM(qty) AS sold_qty, SUM(total) AS sold_rev FROM bill_items GROUP BY LOWER(TRIM(item_name))")
+        for sr in cursor.fetchall():
+            if sr["key_name"]:
+                sold_map[sr["key_name"]] = {
+                    "qty": int(sr["sold_qty"] or 0),
+                    "rev": float(sr["sold_rev"] or 0.0)
+                }
+    except sqlite3.OperationalError:
+        pass
+
     cursor.execute("SELECT * FROM products ORDER BY id DESC")
     raw_products = cursor.fetchall()
     conn.close()
 
     items = []
+    total_realized_profit = 0.0
     for p in raw_products:
         d = dict(p)
         price = float(d.get("price") or 0.0)
         mrp = float(d.get("mrp") or price)
         cost = float(d.get("cost_price") or 0.0)
+        gst_rate = float(d.get("gst_rate") or 0.0)
+
+        unit_profit = round(price - cost, 2) if cost > 0 else 0.0
+        included_gst = round((price * gst_rate) / (100.0 + gst_rate), 2) if gst_rate > 0 else 0.0
+        net_unit_profit = round((price - included_gst) - cost, 2) if cost > 0 else 0.0
         margin_pct = round(((price - cost) / price) * 100.0, 1) if price > 0 and cost > 0 else 0.0
+
+        sold_info = sold_map.get((d.get("name") or "").strip().lower(), {"qty": 0, "rev": 0.0})
+        units_sold = sold_info["qty"]
+        earned_profit = round(units_sold * unit_profit, 2) if cost > 0 else 0.0
+        total_realized_profit += earned_profit
+
         d["price"] = price
         d["mrp"] = mrp
         d["cost_price"] = cost
+        d["unit_profit"] = unit_profit
+        d["net_unit_profit"] = net_unit_profit
         d["margin_pct"] = margin_pct
+        d["units_sold"] = units_sold
+        d["earned_profit"] = earned_profit
         d["sku_code"] = d.get("sku_code") or f"SG-{d['id']:04d}"
         d["brand"] = d.get("brand") or ""
         d["unit"] = d.get("unit") or "pcs"
@@ -289,7 +318,12 @@ def item_master():
         d["image_url"] = d.get("image_url") or ""
         items.append(d)
 
-    return render_template("item_master.html", items=items, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+    return render_template(
+        "item_master.html",
+        items=items,
+        total_realized_profit=round(total_realized_profit, 2),
+        admin_navbar=ADMIN_NAVBAR_SNIPPET
+    )
 
 @admin_bp.route("/item_master/toggle/<int:prod_id>/<string:field>")
 @admin_required
@@ -589,6 +623,7 @@ def low_stock_alert():
 def purchase_entry():
     conn = sqlite3.connect("store_pos.db")
     cursor = conn.cursor()
+    _ensure_item_master_columns(cursor, conn)
     if request.method == "POST":
         supplier_name = request.form.get("supplier_name")
         invoice_no = request.form.get("invoice_no")
@@ -607,8 +642,11 @@ def purchase_entry():
                 VALUES (?, ?, ?, ?, ?)
             """, (supplier_name, invoice_no, items_summary, total_amount, timestamp))
             cursor.execute("UPDATE products SET stock = stock + ? WHERE id = ?", (qty_added, product_id))
+            if qty_added > 0 and total_amount > 0:
+                unit_cost = round(total_amount / qty_added, 2)
+                cursor.execute("UPDATE products SET cost_price = ? WHERE id = ?", (unit_cost, product_id))
             conn.commit()
-            flash("Purchase recorded & inventory stock updated successfully!")
+            flash("Purchase recorded, unit cost & inventory stock updated successfully!")
     cursor.execute("SELECT id, name, stock FROM products")
     products = cursor.fetchall()
     cursor.execute("SELECT * FROM purchases ORDER BY id DESC")
@@ -672,15 +710,40 @@ def expenses():
 def profit_loss():
     conn = sqlite3.connect("store_pos.db")
     cursor = conn.cursor()
+    _ensure_item_master_columns(cursor, conn)
+
     cursor.execute("SELECT SUM(total_amount) FROM bills")
     total_revenue = cursor.fetchone()[0] or 0.0
     cursor.execute("SELECT SUM(total_amount) FROM purchases")
     total_purchases = cursor.fetchone()[0] or 0.0
     cursor.execute("SELECT SUM(amount) FROM expenses")
     total_expenses = cursor.fetchone()[0] or 0.0
+
+    realized_gross_profit = 0.0
+    try:
+        cursor.execute("""
+            SELECT COALESCE(SUM((bi.price - p.cost_price) * bi.qty), 0.0)
+            FROM bill_items bi
+            JOIN products p ON LOWER(TRIM(bi.item_name)) = LOWER(TRIM(p.name))
+            WHERE COALESCE(p.cost_price, 0) > 0
+        """)
+        realized_gross_profit = float(cursor.fetchone()[0] or 0.0)
+    except sqlite3.OperationalError:
+        pass
+
     conn.close()
     net_profit = total_revenue - (total_purchases + total_expenses)
-    return render_template("profit_loss.html", total_revenue=total_revenue, total_purchases=total_purchases, total_expenses=total_expenses, net_profit=net_profit, admin_navbar=ADMIN_NAVBAR_SNIPPET)
+    realized_net_profit = round(realized_gross_profit - total_expenses, 2)
+    return render_template(
+        "profit_loss.html",
+        total_revenue=total_revenue,
+        total_purchases=total_purchases,
+        total_expenses=total_expenses,
+        net_profit=net_profit,
+        realized_gross_profit=round(realized_gross_profit, 2),
+        realized_net_profit=realized_net_profit,
+        admin_navbar=ADMIN_NAVBAR_SNIPPET
+    )
 
 @admin_bp.route("/batches")
 @admin_required

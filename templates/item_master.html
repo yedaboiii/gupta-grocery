@@ -27,7 +27,7 @@
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b border-slate-200 pb-5 gap-4">
             <div>
                 <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">🗂️ Item Master (Central SKU Catalog)</h1>
-                <p class="text-xs text-slate-500 mt-1">Single source of truth for SKU codes, barcodes, MRP, selling price, cost margin, HSN/GST, reorder levels, and online visibility.</p>
+                <p class="text-xs text-slate-500 mt-1">Track cost price, +₹3/+₹4/+₹x rupee markup per unit, GST-inclusive margin, sold profit, and online store visibility.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <a href="/item_master/export_csv" class="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-3.5 py-2 rounded-xl text-xs font-bold transition">
@@ -52,7 +52,7 @@
             {% endif %}
         {% endfor %}
 
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
                 <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">Total Master SKUs</span>
                 <span class="text-2xl font-black text-slate-900 mt-1 block">{{ items|length }}</span>
@@ -68,6 +68,10 @@
             <div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-4">
                 <span class="text-[11px] font-bold uppercase tracking-wider text-amber-800 block">Below Reorder Level</span>
                 <span class="text-2xl font-black text-amber-900 mt-1 block">{{ low_count|length }}</span>
+            </div>
+            <div class="col-span-2 lg:col-span-1 bg-teal-50/80 border border-teal-200 rounded-2xl p-4">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-teal-800 block">Earned Unit Profit</span>
+                <span class="text-2xl font-black text-teal-900 mt-1 block">₹{{ "%.2f"|format(total_realized_profit | default(0.0)) }}</span>
             </div>
         </div>
 
@@ -108,7 +112,8 @@
                             <th class="py-3 px-3.5 font-bold">Item & Brand</th>
                             <th class="py-3 px-3.5 font-bold">Category / Unit</th>
                             <th class="py-3 px-3.5 font-bold text-right">MRP / Sell</th>
-                            <th class="py-3 px-3.5 font-bold text-right">Cost / Margin</th>
+                            <th class="py-3 px-3.5 font-bold text-right">Cost & +₹ Profit/Unit</th>
+                            <th class="py-3 px-3.5 font-bold text-right">Sold / Earned</th>
                             <th class="py-3 px-3.5 font-bold text-center">GST / HSN</th>
                             <th class="py-3 px-3.5 font-bold text-center">Stock / Min</th>
                             <th class="py-3 px-3.5 font-bold text-center">Channel</th>
@@ -118,6 +123,9 @@
                     </thead>
                     <tbody id="master-tbody" class="divide-y divide-slate-100 bg-white">
                         {% for item in items %}
+                        {% set u_profit = item.unit_profit | default(0.0) %}
+                        {% set u_sold = item.units_sold | default(0) %}
+                        {% set e_profit = item.earned_profit | default(0.0) %}
                         <tr class="master-row hover:bg-slate-50 transition align-middle"
                             data-search="{{ (item.sku_code ~ ' ' ~ item.barcode ~ ' ' ~ item.name ~ ' ' ~ item.brand ~ ' ' ~ item.hsn_code)|lower }}"
                             data-category="{{ item.category }}"
@@ -127,7 +135,7 @@
                                 <span class="font-mono font-extrabold text-emerald-700 block">{{ item.sku_code }}</span>
                                 <span class="font-mono text-[11px] text-slate-500">{{ item.barcode or 'No Barcode' }}</span>
                             </td>
-                            <td class="py-3 px-3.5 min-w-[200px]">
+                            <td class="py-3 px-3.5 min-w-[190px]">
                                 <div class="flex items-center gap-2.5">
                                     {% if item.image_url %}
                                     <img src="{{ item.image_url }}" alt="{{ item.name }}" class="w-9 h-9 rounded-lg object-contain border border-slate-200 bg-slate-50 p-0.5 shrink-0">
@@ -149,14 +157,21 @@
                                 <span class="font-black text-emerald-700 text-sm">₹{{ "%.2f"|format(item.price) }}</span>
                             </td>
                             <td class="py-3 px-3.5 text-right whitespace-nowrap">
-                                <span class="text-slate-700 font-semibold block">Cost ₹{{ "%.2f"|format(item.cost_price) }}</span>
                                 {% if item.cost_price > 0 %}
-                                <span class="text-[10px] font-bold {% if item.margin_pct >= 10 %}text-emerald-600{% else %}text-amber-600{% endif %}">
-                                    {{ item.margin_pct }}% margin
+                                <span class="text-slate-700 font-semibold block">Cost ₹{{ "%.2f"|format(item.cost_price) }}</span>
+                                <span class="inline-block mt-0.5 px-2 py-0.5 rounded-md text-[10px] font-extrabold {% if u_profit > 0 %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-700{% endif %}">
+                                    {% if u_profit >= 0 %}+₹{{ "%.2f"|format(u_profit) }}{% else %}-₹{{ "%.2f"|format(u_profit|abs) }}{% endif %} ({{ item.margin_pct }}%)
                                 </span>
                                 {% else %}
-                                <span class="text-[10px] text-slate-400">Set cost</span>
+                                <span class="text-slate-400 font-medium block">Cost ₹0.00</span>
+                                <button type="button" onclick='openEditModal({{ item | tojson | safe }})' class="text-[10px] font-bold text-amber-600 hover:underline">+ Set cost & markup</button>
                                 {% endif %}
+                            </td>
+                            <td class="py-3 px-3.5 text-right whitespace-nowrap">
+                                <span class="text-slate-700 font-bold block">{{ u_sold }} sold</span>
+                                <span class="text-[11px] font-extrabold {% if e_profit > 0 %}text-teal-700{% else %}text-slate-400{% endif %}">
+                                    ₹{{ "%.2f"|format(e_profit) }}
+                                </span>
                             </td>
                             <td class="py-3 px-3.5 text-center whitespace-nowrap">
                                 <span class="font-bold text-slate-800 block">{{ item.gst_rate }}%</span>
@@ -195,7 +210,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="10" class="text-center py-8 text-slate-400 text-xs">No items in Item Master yet. Click "Add New Item" to create your first SKU.</td>
+                            <td colspan="11" class="text-center py-8 text-slate-400 text-xs">No items in Item Master yet. Click "Add New Item" to create your first SKU.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -249,39 +264,65 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">Unit</label>
-                        <select name="unit" id="f-unit" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 font-semibold outline-none">
-                            <option value="pcs">pcs</option>
-                            <option value="kg">kg</option>
-                            <option value="g">g</option>
-                            <option value="L">L</option>
-                            <option value="ml">ml</option>
-                            <option value="pack">pack</option>
-                        </select>
+                <!-- Cost + Rupee Profit Markup Calculator Box -->
+                <div class="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-3.5 space-y-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <span class="font-extrabold text-emerald-900">💰 Cost & +₹ Profit Markup Calculator</span>
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-[11px] text-emerald-800 font-semibold">Quick Add Profit:</span>
+                            <button type="button" onclick="applyRupeeMarkup(2)" class="px-2 py-1 rounded-lg bg-white border border-emerald-300 hover:bg-emerald-600 hover:text-white font-bold text-[11px] transition">+₹2</button>
+                            <button type="button" onclick="applyRupeeMarkup(3)" class="px-2 py-1 rounded-lg bg-white border border-emerald-300 hover:bg-emerald-600 hover:text-white font-bold text-[11px] transition">+₹3</button>
+                            <button type="button" onclick="applyRupeeMarkup(4)" class="px-2 py-1 rounded-lg bg-white border border-emerald-300 hover:bg-emerald-600 hover:text-white font-bold text-[11px] transition">+₹4</button>
+                            <button type="button" onclick="applyRupeeMarkup(5)" class="px-2 py-1 rounded-lg bg-white border border-emerald-300 hover:bg-emerald-600 hover:text-white font-bold text-[11px] transition">+₹5</button>
+                            <button type="button" onclick="applyRupeeMarkup(10)" class="px-2 py-1 rounded-lg bg-white border border-emerald-300 hover:bg-emerald-600 hover:text-white font-bold text-[11px] transition">+₹10</button>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">MRP (₹)</label>
-                        <input type="number" step="0.01" name="mrp" id="f-mrp" placeholder="0.00" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
+
+                    <div class="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Unit</label>
+                            <select name="unit" id="f-unit" class="w-full p-2 border border-slate-300 rounded-xl bg-white font-semibold outline-none">
+                                <option value="pcs">pcs</option>
+                                <option value="kg">kg</option>
+                                <option value="g">g</option>
+                                <option value="L">L</option>
+                                <option value="ml">ml</option>
+                                <option value="pack">pack</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Cost Price (₹)</label>
+                            <input type="number" step="0.01" name="cost_price" id="f-cost" oninput="recalcFromCostOrMarkup()" placeholder="0.00" class="w-full p-2 border border-slate-300 rounded-xl bg-white outline-none">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-emerald-800 mb-1">+₹ Profit (x)</label>
+                            <input type="number" step="0.01" id="f-markup-rs" oninput="recalcFromCostOrMarkup()" placeholder="e.g. 3 or 4" class="w-full p-2 border border-emerald-400 rounded-xl bg-white font-bold text-emerald-800 outline-none">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">Selling Price (₹) *</label>
+                            <input type="number" step="0.01" name="price" id="f-price" required oninput="recalcFromSellingPrice()" placeholder="0.00" class="w-full p-2 border border-slate-300 rounded-xl bg-white font-extrabold outline-none">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">MRP (₹)</label>
+                            <input type="number" step="0.01" name="mrp" id="f-mrp" placeholder="0.00" class="w-full p-2 border border-slate-300 rounded-xl bg-white outline-none">
+                        </div>
+                        <div>
+                            <label class="block font-bold text-slate-700 mb-1">GST %</label>
+                            <select name="gst_rate" id="f-gst" onchange="recalcFromSellingPrice()" class="w-full p-2 border border-slate-300 rounded-xl bg-white font-semibold outline-none">
+                                <option value="0">0%</option>
+                                <option value="5" selected>5%</option>
+                                <option value="12">12%</option>
+                                <option value="18">18%</option>
+                                <option value="28">28%</option>
+                            </select>
+                        </div>
                     </div>
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">Selling Price (₹) *</label>
-                        <input type="number" step="0.01" name="price" id="f-price" required placeholder="0.00" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
-                    </div>
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">Cost Price (₹)</label>
-                        <input type="number" step="0.01" name="cost_price" id="f-cost" placeholder="0.00" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 focus:bg-white outline-none">
-                    </div>
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">GST %</label>
-                        <select name="gst_rate" id="f-gst" class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50 font-semibold outline-none">
-                            <option value="0">0%</option>
-                            <option value="5" selected>5%</option>
-                            <option value="12">12%</option>
-                            <option value="18">18%</option>
-                            <option value="28">28%</option>
-                        </select>
+
+                    <div id="profit-preview-bar" class="text-[11px] font-bold text-emerald-900 bg-white/90 border border-emerald-200 rounded-xl px-3 py-2 flex flex-wrap justify-between gap-2">
+                        <span>Gross Gain / Unit: <strong id="prev-gross">₹0.00</strong></span>
+                        <span>Included GST: <strong id="prev-gst">₹0.00</strong></span>
+                        <span>Net Profit After GST: <strong id="prev-net">₹0.00</strong></span>
+                        <span>Margin: <strong id="prev-margin">0.0%</strong></span>
                     </div>
                 </div>
 
@@ -345,7 +386,7 @@
                 <h3 class="text-base font-black text-slate-900">📥 Bulk Import Item Master (CSV)</h3>
                 <button type="button" onclick="document.getElementById('csv-modal').classList.add('hidden')" class="w-7 h-7 rounded-full bg-slate-100 font-bold">✕</button>
             </div>
-            <p class="text-slate-600 leading-relaxed">Upload a CSV exported from Item Master (or with columns: <code class="bg-slate-100 px-1 rounded">sku_code, barcode, name, brand, category, unit, mrp, price, cost_price, gst_rate, hsn_code, stock, reorder_level</code>). Existing barcodes/SKUs are updated automatically.</p>
+            <p class="text-slate-600 leading-relaxed">Upload a CSV exported from Item Master (with columns: <code class="bg-slate-100 px-1 rounded">sku_code, barcode, name, brand, category, unit, mrp, price, cost_price, gst_rate, hsn_code, stock, reorder_level</code>). Existing barcodes/SKUs are updated automatically.</p>
             <form action="/item_master/import_csv" method="POST" enctype="multipart/form-data" class="space-y-3">
                 <input type="file" name="csv_file" accept=".csv" required class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50">
                 <div class="flex justify-end gap-2">
@@ -357,6 +398,53 @@
     </div>
 
     <script>
+        function updateProfitPreview() {
+            const cost = parseFloat(document.getElementById('f-cost').value) || 0;
+            const sell = parseFloat(document.getElementById('f-price').value) || 0;
+            const gst = parseFloat(document.getElementById('f-gst').value) || 0;
+
+            const gross = cost > 0 ? (sell - cost) : 0;
+            const incGst = gst > 0 ? (sell * gst) / (100 + gst) : 0;
+            const net = cost > 0 ? ((sell - incGst) - cost) : 0;
+            const margin = (sell > 0 && cost > 0) ? ((gross / sell) * 100) : 0;
+
+            document.getElementById('prev-gross').innerText = (gross >= 0 ? '+₹' : '-₹') + Math.abs(gross).toFixed(2);
+            document.getElementById('prev-gst').innerText = '₹' + incGst.toFixed(2);
+            document.getElementById('prev-net').innerText = (net >= 0 ? '+₹' : '-₹') + Math.abs(net).toFixed(2);
+            document.getElementById('prev-margin').innerText = margin.toFixed(1) + '%';
+        }
+
+        function applyRupeeMarkup(rs) {
+            document.getElementById('f-markup-rs').value = rs;
+            recalcFromCostOrMarkup();
+        }
+
+        function recalcFromCostOrMarkup() {
+            const cost = parseFloat(document.getElementById('f-cost').value) || 0;
+            const markupVal = document.getElementById('f-markup-rs').value;
+            if (markupVal !== '') {
+                const markup = parseFloat(markupVal) || 0;
+                const newSell = Math.max(0, cost + markup);
+                document.getElementById('f-price').value = newSell.toFixed(2);
+                const mrpEl = document.getElementById('f-mrp');
+                if (!mrpEl.value || parseFloat(mrpEl.value) < newSell) {
+                    mrpEl.value = newSell.toFixed(2);
+                }
+            }
+            updateProfitPreview();
+        }
+
+        function recalcFromSellingPrice() {
+            const cost = parseFloat(document.getElementById('f-cost').value) || 0;
+            const sell = parseFloat(document.getElementById('f-price').value) || 0;
+            if (cost > 0) {
+                document.getElementById('f-markup-rs').value = (sell - cost).toFixed(2);
+            } else {
+                document.getElementById('f-markup-rs').value = '';
+            }
+            updateProfitPreview();
+        }
+
         function openItemModal() {
             document.getElementById('modal-title').innerText = '➕ Add New Master Item';
             document.getElementById('form-action').value = 'create';
@@ -370,6 +458,7 @@
             document.getElementById('f-mrp').value = '';
             document.getElementById('f-price').value = '';
             document.getElementById('f-cost').value = '';
+            document.getElementById('f-markup-rs').value = '';
             document.getElementById('f-gst').value = '5';
             document.getElementById('f-hsn').value = '';
             document.getElementById('f-stock').value = '0';
@@ -380,6 +469,7 @@
             document.getElementById('f-image').value = '';
             document.getElementById('f-online').checked = true;
             document.getElementById('f-active').checked = true;
+            updateProfitPreview();
             document.getElementById('item-modal').classList.remove('hidden');
         }
 
@@ -396,6 +486,7 @@
             document.getElementById('f-mrp').value = item.mrp || 0;
             document.getElementById('f-price').value = item.price || 0;
             document.getElementById('f-cost').value = item.cost_price || 0;
+            document.getElementById('f-markup-rs').value = (item.cost_price > 0) ? (item.price - item.cost_price).toFixed(2) : '';
             document.getElementById('f-gst').value = String(parseInt(item.gst_rate || 5, 10));
             document.getElementById('f-hsn').value = item.hsn_code || '';
             document.getElementById('f-stock').value = item.stock || 0;
@@ -406,6 +497,7 @@
             document.getElementById('f-image').value = item.image_url || '';
             document.getElementById('f-online').checked = Number(item.is_online) === 1;
             document.getElementById('f-active').checked = Number(item.is_active) === 1;
+            updateProfitPreview();
             document.getElementById('item-modal').classList.remove('hidden');
         }
 
