@@ -14,7 +14,7 @@
 </head>
 <body class="bg-slate-100 font-sans p-4 md:p-8 flex flex-col items-center">
 
-    <!-- Order Placed Success Pop-Up Modal (Shown after online checkout when placed=1) -->
+    <!-- Order Placed Success Pop-Up Modal (Shown right after online checkout when placed=1) -->
     {% if order_placed %}
     <div id="order-success-modal" class="no-print fixed inset-0 bg-slate-950/65 backdrop-blur-xs z-50 flex items-center justify-center p-4">
         <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-emerald-200 overflow-hidden text-center">
@@ -74,7 +74,21 @@
     {% endif %}
 
     <!-- Receipt & Order Summary Card -->
-    <div id="receipt-card" class="w-full max-w-md bg-white p-6 rounded-2xl shadow-xl border border-slate-200 text-xs font-mono">
+    {% set resolved_addr = (delivery_address or (bill[13] if bill|length > 13 else ''))|trim %}
+    <div id="receipt-card"
+         data-store-name="{{ settings.get('store_name', 'SWARAJ GROCERY') if settings is mapping else 'SWARAJ GROCERY' }}"
+         data-store-addr="{{ settings.get('store_address', 'Main Road, Katol, Nagpur, Maharashtra') if settings is mapping else 'Main Road, Katol, Nagpur, Maharashtra' }}"
+         data-invoice-id="{{ bill[0] }}"
+         data-timestamp="{{ bill[12] if bill|length > 12 else '' }}"
+         data-customer="{{ bill[1] }}"
+         data-phone="{{ bill[2] or 'N/A' }}"
+         data-pay-mode="{{ bill[8] }}"
+         data-status="{{ bill[11] }}"
+         data-address="{{ resolved_addr }}"
+         data-subtotal="{{ '%.2f'|format(bill[4] or 0.0) }}"
+         data-gst-amt="{{ '%.2f'|format(bill[6] or 0.0) }}"
+         data-total-amt="{{ '%.2f'|format(bill[7] or 0.0) }}"
+         class="w-full max-w-md bg-white p-6 rounded-2xl shadow-xl border border-slate-200 text-xs font-mono">
         <!-- Store Header -->
         <div class="text-center border-b border-dashed border-slate-300 pb-4 mb-4 font-sans">
             {% if order_placed %}
@@ -87,7 +101,7 @@
             <p class="text-[10px] text-slate-500">GSTIN: {{ settings.get('gstin', '27AAAAA0000A1Z5') if settings is mapping else '27AAAAA0000A1Z5' }} | Ph: {{ settings.get('phone', '9876543210') if settings is mapping else '9876543210' }}</p>
             <p class="text-[10px] text-slate-400 mt-1">{{ bill[12] if bill|length > 12 else '' }}</p>
         </div>
-        
+
         <!-- Bill Metadata -->
         <div class="mb-4 space-y-1 text-slate-700 text-[11px]">
             <div class="flex justify-between">
@@ -110,17 +124,16 @@
                 <span class="font-bold">Status:</span>
                 <span class="font-bold {% if bill[11] == 'Paid' %}text-green-600{% else %}text-red-600{% endif %}">{{ bill[11] }}</span>
             </div>
-            {% set addr = (delivery_address or (bill[13] if bill|length > 13 else ''))|trim %}
-            {% if addr %}
+            {% if resolved_addr %}
             <div class="flex justify-between items-start gap-3 pt-1 border-t border-slate-100 font-sans">
                 <span class="font-bold text-slate-700 whitespace-nowrap">📍 Address:</span>
-                <span class="font-bold text-slate-900 text-right break-words">{{ addr }}</span>
+                <span class="font-bold text-slate-900 text-right break-words">{{ resolved_addr }}</span>
             </div>
             {% endif %}
         </div>
 
         <!-- Items Table -->
-        <table class="w-full border-t border-b border-slate-200 py-2 mb-4 text-[11px]">
+        <table id="receipt-items-table" class="w-full border-t border-b border-slate-200 py-2 mb-4 text-[11px]">
             <thead>
                 <tr class="text-left text-[10px] text-slate-400 border-b border-slate-100">
                     <th class="py-1 font-bold">Item</th>
@@ -132,7 +145,11 @@
             </thead>
             <tbody class="divide-y divide-slate-100">
                 {% for item in items %}
-                <tr>
+                <tr class="receipt-item-row"
+                    data-name="{{ item[0] }}"
+                    data-qty="{{ item[2] }}"
+                    data-price="{{ '%.2f'|format(item[1] or 0.0) }}"
+                    data-total="{{ '%.2f'|format(item[4] or 0.0) }}">
                     <td class="py-1.5 font-bold text-slate-800 font-sans">{{ item[0] }}</td>
                     <td class="py-1.5 text-center font-bold text-slate-600">{{ item[2] }}</td>
                     <td class="py-1.5 text-right font-bold text-slate-600">₹{{ "%.2f"|format(item[1] or 0.0) }}</td>
@@ -237,19 +254,30 @@
         }
 
         function saveReceiptToDevice() {
-            const storeName = {{ (settings.get('store_name', 'SWARAJ GROCERY') if settings is mapping else 'SWARAJ GROCERY') | tojson }};
-            const storeAddr = {{ (settings.get('store_address', 'Main Road, Katol, Nagpur, Maharashtra') if settings is mapping else 'Main Road, Katol, Nagpur, Maharashtra') | tojson }};
-            const invoiceId = {{ bill[0] | tojson }};
-            const timestamp = {{ (bill[12] if bill|length > 12 else '') | tojson }};
-            const customer = {{ (bill[1] or 'Customer') | tojson }};
-            const phone = {{ (bill[2] or 'N/A') | tojson }};
-            const payMode = {{ (bill[8] or 'Online UPI') | tojson }};
-            const status = {{ (bill[11] or 'Paid') | tojson }};
-            const address = {{ ((delivery_address or (bill[13] if bill|length > 13 else ''))|trim) | tojson }};
-            const subtotal = {{ "%.2f"|format(bill[4] or 0.0) | tojson }};
-            const gstAmt = {{ "%.2f"|format(bill[6] or 0.0) | tojson }};
-            const totalAmt = {{ "%.2f"|format(bill[7] or 0.0) | tojson }};
-            const itemsData = {{ items | tojson }};
+            const card = document.getElementById('receipt-card');
+            if (!card) return;
+
+            const storeName = card.getAttribute('data-store-name') || 'SWARAJ GROCERY';
+            const storeAddr = card.getAttribute('data-store-addr') || '';
+            const invoiceId = card.getAttribute('data-invoice-id') || '1';
+            const timestamp = card.getAttribute('data-timestamp') || '';
+            const customer = card.getAttribute('data-customer') || 'Customer';
+            const phone = card.getAttribute('data-phone') || 'N/A';
+            const payMode = card.getAttribute('data-pay-mode') || 'Online UPI';
+            const status = card.getAttribute('data-status') || 'Paid';
+            const address = card.getAttribute('data-address') || '';
+            const subtotal = card.getAttribute('data-subtotal') || '0.00';
+            const gstAmt = card.getAttribute('data-gst-amt') || '0.00';
+            const totalAmt = card.getAttribute('data-total-amt') || '0.00';
+
+            const itemsData = Array.from(document.querySelectorAll('.receipt-item-row')).map(function (row) {
+                return {
+                    name: row.getAttribute('data-name') || 'Item',
+                    qty: row.getAttribute('data-qty') || '1',
+                    price: row.getAttribute('data-price') || '0.00',
+                    total: row.getAttribute('data-total') || '0.00'
+                };
+            });
 
             const lineHeight = 24;
             const itemCount = Math.max(1, itemsData.length);
@@ -257,78 +285,74 @@
             const width = 540;
 
             let y = 28;
-            let svgParts = [];
+            const svgParts = [];
 
-            svgParts.push(`<rect x="0" y="0" width="${width}" height="${height}" rx="20" fill="#ffffff"/>`);
-            svgParts.push(`<rect x="0" y="0" width="${width}" height="86" rx="20" fill="#0f172a"/>`);
-            svgParts.push(`<rect x="0" y="66" width="${width}" height="20" fill="#0f172a"/>`);
-            svgParts.push(`<text x="24" y="${y}" fill="#34d399" font-family="Arial, sans-serif" font-size="11" font-weight="bold">ORDER SUMMARY • RECEIPT #${escapeXml(invoiceId)}</text>`);
+            svgParts.push('<rect x="0" y="0" width="' + width + '" height="' + height + '" rx="20" fill="#ffffff"/>');
+            svgParts.push('<rect x="0" y="0" width="' + width + '" height="86" rx="20" fill="#0f172a"/>');
+            svgParts.push('<rect x="0" y="66" width="' + width + '" height="20" fill="#0f172a"/>');
+            svgParts.push('<text x="24" y="' + y + '" fill="#34d399" font-family="Arial, sans-serif" font-size="11" font-weight="bold">ORDER SUMMARY • RECEIPT #' + escapeXml(invoiceId) + '</text>');
             y += 24;
-            svgParts.push(`<text x="24" y="${y}" fill="#ffffff" font-family="Arial, sans-serif" font-size="18" font-weight="bold">${escapeXml(storeName)}</text>`);
+            svgParts.push('<text x="24" y="' + y + '" fill="#ffffff" font-family="Arial, sans-serif" font-size="18" font-weight="bold">' + escapeXml(storeName) + '</text>');
             y += 18;
-            svgParts.push(`<text x="24" y="${y}" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="11">${escapeXml(storeAddr)}</text>`);
+            svgParts.push('<text x="24" y="' + y + '" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="11">' + escapeXml(storeAddr) + '</text>');
 
             y = 112;
             const metaRows = [
-                ["Invoice ID", "#" + invoiceId],
-                ["Date & Time", timestamp],
-                ["Customer", customer],
-                ["Phone", phone],
-                ["Pay Mode", payMode],
-                ["Status", status]
+                ['Invoice ID', '#' + invoiceId],
+                ['Date & Time', timestamp],
+                ['Customer', customer],
+                ['Phone', phone],
+                ['Pay Mode', payMode],
+                ['Status', status]
             ];
             if (address) {
-                metaRows.push(["Address", address]);
+                metaRows.push(['Address', address]);
             }
 
-            metaRows.forEach(([k, v]) => {
-                svgParts.push(`<text x="24" y="${y}" fill="#64748b" font-family="Arial, sans-serif" font-size="12">${escapeXml(k)}</text>`);
-                svgParts.push(`<text x="${width - 24}" y="${y}" text-anchor="end" fill="#0f172a" font-family="Arial, sans-serif" font-size="12" font-weight="bold">${escapeXml(v)}</text>`);
+            metaRows.forEach(function (pair) {
+                svgParts.push('<text x="24" y="' + y + '" fill="#64748b" font-family="Arial, sans-serif" font-size="12">' + escapeXml(pair[0]) + '</text>');
+                svgParts.push('<text x="' + (width - 24) + '" y="' + y + '" text-anchor="end" fill="#0f172a" font-family="Arial, sans-serif" font-size="12" font-weight="bold">' + escapeXml(pair[1]) + '</text>');
                 y += lineHeight;
             });
 
             y += 6;
-            svgParts.push(`<line x1="24" y1="${y}" x2="${width - 24}" y2="${y}" stroke="#e2e8f0" stroke-dasharray="4,4"/>`);
+            svgParts.push('<line x1="24" y1="' + y + '" x2="' + (width - 24) + '" y2="' + y + '" stroke="#e2e8f0" stroke-dasharray="4,4"/>');
             y += 22;
-            svgParts.push(`<text x="24" y="${y}" fill="#475569" font-family="Arial, sans-serif" font-size="11" font-weight="bold">ITEMS SUMMARY</text>`);
+            svgParts.push('<text x="24" y="' + y + '" fill="#475569" font-family="Arial, sans-serif" font-size="11" font-weight="bold">ITEMS SUMMARY</text>');
             y += 20;
 
-            itemsData.forEach(it => {
-                const iName = it[0] || "Item";
-                const iQty = it[2] || 1;
-                const iPrice = Number(it[1] || 0).toFixed(2);
-                const iTotal = Number(it[4] || 0).toFixed(2);
-                svgParts.push(`<text x="24" y="${y}" fill="#0f172a" font-family="Arial, sans-serif" font-size="12" font-weight="bold">${escapeXml(iName)}</text>`);
-                svgParts.push(`<text x="${width - 24}" y="${y}" text-anchor="end" fill="#059669" font-family="Arial, sans-serif" font-size="12" font-weight="bold">Rs.${escapeXml(iTotal)}</text>`);
+            itemsData.forEach(function (it) {
+                svgParts.push('<text x="24" y="' + y + '" fill="#0f172a" font-family="Arial, sans-serif" font-size="12" font-weight="bold">' + escapeXml(it.name) + '</text>');
+                svgParts.push('<text x="' + (width - 24) + '" y="' + y + '" text-anchor="end" fill="#059669" font-family="Arial, sans-serif" font-size="12" font-weight="bold">Rs.' + escapeXml(it.total) + '</text>');
                 y += 16;
-                svgParts.push(`<text x="24" y="${y}" fill="#64748b" font-family="Arial, sans-serif" font-size="11">${iQty} x Rs.${escapeXml(iPrice)}</text>`);
+                svgParts.push('<text x="24" y="' + y + '" fill="#64748b" font-family="Arial, sans-serif" font-size="11">' + escapeXml(it.qty) + ' x Rs.' + escapeXml(it.price) + '</text>');
                 y += 22;
             });
 
-            svgParts.push(`<line x1="24" y1="${y}" x2="${width - 24}" y2="${y}" stroke="#e2e8f0" stroke-dasharray="4,4"/>`);
+            svgParts.push('<line x1="24" y1="' + y + '" x2="' + (width - 24) + '" y2="' + y + '" stroke="#e2e8f0" stroke-dasharray="4,4"/>');
             y += 24;
-            svgParts.push(`<text x="24" y="${y}" fill="#475569" font-family="Arial, sans-serif" font-size="12">Subtotal</text>`);
-            svgParts.push(`<text x="${width - 24}" y="${y}" text-anchor="end" fill="#0f172a" font-family="Arial, sans-serif" font-size="12" font-weight="bold">Rs.${escapeXml(subtotal)}</text>`);
+            svgParts.push('<text x="24" y="' + y + '" fill="#475569" font-family="Arial, sans-serif" font-size="12">Subtotal</text>');
+            svgParts.push('<text x="' + (width - 24) + '" y="' + y + '" text-anchor="end" fill="#0f172a" font-family="Arial, sans-serif" font-size="12" font-weight="bold">Rs.' + escapeXml(subtotal) + '</text>');
             y += 22;
-            svgParts.push(`<text x="24" y="${y}" fill="#475569" font-family="Arial, sans-serif" font-size="12">GST Included</text>`);
-            svgParts.push(`<text x="${width - 24}" y="${y}" text-anchor="end" fill="#0f172a" font-family="Arial, sans-serif" font-size="12" font-weight="bold">Rs.${escapeXml(gstAmt)}</text>`);
+            svgParts.push('<text x="24" y="' + y + '" fill="#475569" font-family="Arial, sans-serif" font-size="12">GST Included</text>');
+            svgParts.push('<text x="' + (width - 24) + '" y="' + y + '" text-anchor="end" fill="#0f172a" font-family="Arial, sans-serif" font-size="12" font-weight="bold">Rs.' + escapeXml(gstAmt) + '</text>');
             y += 28;
-            svgParts.push(`<text x="24" y="${y}" fill="#0f172a" font-family="Arial, sans-serif" font-size="15" font-weight="bold">Total Payable</text>`);
-            svgParts.push(`<text x="${width - 24}" y="${y}" text-anchor="end" fill="#059669" font-family="Arial, sans-serif" font-size="16" font-weight="bold">Rs.${escapeXml(totalAmt)}</text>`);
+            svgParts.push('<text x="24" y="' + y + '" fill="#0f172a" font-family="Arial, sans-serif" font-size="15" font-weight="bold">Total Payable</text>');
+            svgParts.push('<text x="' + (width - 24) + '" y="' + y + '" text-anchor="end" fill="#059669" font-family="Arial, sans-serif" font-size="16" font-weight="bold">Rs.' + escapeXml(totalAmt) + '</text>');
             y += 32;
-            svgParts.push(`<text x="${width / 2}" y="${y}" text-anchor="middle" fill="#334155" font-family="Arial, sans-serif" font-size="12" font-weight="bold">Thank you for shopping at ${escapeXml(storeName)}!</text>`);
+            svgParts.push('<text x="' + (width / 2) + '" y="' + y + '" text-anchor="middle" fill="#334155" font-family="Arial, sans-serif" font-size="12" font-weight="bold">Thank you for shopping at ' + escapeXml(storeName) + '!</text>');
 
-            const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${svgParts.join('')}</svg>`;
-            const svgBlob = new Blob([svgContent], { type: "image/svg+xml;charset=utf-8" });
+            const svgContent = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '">' + svgParts.join('') + '</svg>';
+            const svgBlob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
             const url = URL.createObjectURL(svgBlob);
             const img = new Image();
 
             img.onload = function () {
-                const canvas = document.createElement("canvas");
+                const canvas = document.createElement('canvas');
                 canvas.width = width;
                 canvas.height = height;
-                const ctx = canvas.getContext("2d");
-                ctx.fillStyle = "#f1f5f9";
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#f1f5f9';
                 ctx.fillRect(0, 0, width, height);
                 ctx.drawImage(img, 0, 0);
                 URL.revokeObjectURL(url);
@@ -336,14 +360,14 @@
                 canvas.toBlob(function (pngBlob) {
                     if (!pngBlob) return;
                     const dlUrl = URL.createObjectURL(pngBlob);
-                    const link = document.createElement("a");
+                    const link = document.createElement('a');
                     link.href = dlUrl;
-                    link.download = `Swaraj_Grocery_Receipt_#${invoiceId}.png`;
+                    link.download = 'Swaraj_Grocery_Receipt_#' + invoiceId + '.png';
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
-                    setTimeout(() => URL.revokeObjectURL(dlUrl), 1000);
-                }, "image/png");
+                    setTimeout(function () { URL.revokeObjectURL(dlUrl); }, 1000);
+                }, 'image/png');
             };
 
             img.src = url;
