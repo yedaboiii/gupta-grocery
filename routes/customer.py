@@ -182,7 +182,9 @@ def online_checkout():
     conn.commit()
     conn.close()
 
-    return redirect(url_for("customer.customer_receipt", bill_id=bill_id))
+    return redirect(
+        url_for("customer.customer_receipt", bill_id=bill_id, placed=1)
+    )
 
   except Exception as e:
     return (
@@ -262,10 +264,12 @@ def customer_receipt(bill_id):
     pass
 
   conn.close()
+  order_placed = request.args.get("placed") == "1"
   return render_template(
       "receipt.html",
       bill=bill,
       items=items,
       settings=settings_dict,
       delivery_address=delivery_address,
+      order_placed=order_placed,
   )
