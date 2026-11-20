@@ -1,7 +1,81 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import json
 import sqlite3
 from flask import Blueprint, flash, redirect, render_template, request, send_from_directory, url_for
+
+try:
+  from inventory_tracker import ensure_inventory_track_table, record_inventory_track
+except ImportError:
+  IST = ZoneInfo("Asia/Kolkata")
+
+  def _ist_now():
+    now = datetime.now(IST)
+    return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d %H:%M:%S IST")
+
+  def ensure_inventory_track_table(cursor, conn):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS inventory_tracks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER,
+            barcode TEXT DEFAULT '',
+            product_name TEXT NOT NULL,
+            category TEXT DEFAULT 'Essentials',
+            movement_type TEXT NOT NULL,
+            qty_change REAL NOT NULL,
+            stock_after REAL,
+            source TEXT DEFAULT 'Server',
+            reference_id TEXT DEFAULT '',
+            track_date TEXT NOT NULL,
+            ist_timestamp TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+
+  def record_inventory_track(
+      cursor,
+      conn,
+      *,
+      product_id=None,
+      barcode="",
+      product_name,
+      category="Essentials",
+      movement_type,
+      qty_change,
+      stock_after=None,
+      source="Server",
+      reference_id="",
+  ):
+    ensure_inventory_track_table(cursor, conn)
+    track_date, ist_ts = _ist_now()
+    movement = (movement_type or "").strip().upper()
+    if movement not in ("SOLD", "PURCHASED"):
+      movement = "SOLD" if float(qty_change) < 0 else "PURCHASED"
+
+    cursor.execute(
+        """
+        INSERT INTO inventory_tracks (
+            product_id, barcode, product_name, category,
+            movement_type, qty_change, stock_after,
+            source, reference_id, track_date, ist_timestamp
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            product_id,
+            (barcode or "").strip(),
+            (product_name or "Product").strip(),
+            (category or "Essentials").strip(),
+            movement,
+            float(qty_change),
+            float(stock_after) if stock_after is not None else None,
+            (source or "Server").strip(),
+            str(reference_id or ""),
+            track_date,
+            ist_ts,
+        ),
+    )
+    conn.commit()
 
 customer_bp = Blueprint("customer", __name__)
 
@@ -169,11 +243,13 @@ def online_checkout():
     conn = sqlite3.connect("store_pos.db")
     cursor = conn.cursor()
     _ensure_storefront_columns(cursor, conn)
+    ensure_inventory_track_table(cursor, conn)
 
     subtotal = 0.0
     gst_total = 0.0
     summary_parts = []
     processed_cart = []
+    track_events = []
     synced_bases = set()
 
     for p_id_str, item in cart_items.items():
@@ -184,24 +260,30 @@ def online_checkout():
       qty = max(1, int(item.get("qty", 1)))
 
       cursor.execute(
-          "SELECT id, name, pack_size, price, stock, gst_rate, base_product_id, COALESCE(weight_kg, 1.0)"
+          "SELECT id, barcode, name, pack_size, category, price, stock, gst_rate, base_product_id, COALESCE(weight_kg, 1.0)"
           " FROM products WHERE id = ?",
           (p_id,),
       )
       prod = cursor.fetchone()
       if prod:
-        _, raw_name, pack_size, price, stock, gst_rate, base_prod_id, weight_kg = prod
+        _, p_barcode, raw_name, pack_size, p_category, price, stock, gst_rate, base_prod_id, weight_kg = prod
         pack_str = (pack_size or "").strip()
         name = f"{raw_name} ({pack_str})" if pack_str and f"({pack_str})" not in raw_name else raw_name
         price = float(price or 0.0)
         gst_rate = float(gst_rate if gst_rate is not None else 5.0)
         weight_kg = float(weight_kg or 1.0)
+        p_barcode = p_barcode or ""
+        p_category = p_category or "Essentials"
+        curr_stock = float(stock or 0.0)
       else:
         name = item.get("name", "Product")
         price = float(item.get("price", 0.0) or 0.0)
         gst_rate = float(item.get("gst", 5.0) or 5.0)
         base_prod_id = None
         weight_kg = 1.0
+        p_barcode = ""
+        p_category = "Essentials"
+        curr_stock = 0.0
 
       line_total = round(price * qty, 2)
       item_gst = round((line_total * gst_rate) / (100.0 + gst_rate), 2) if gst_rate > 0 else 0.0
@@ -224,13 +306,42 @@ def online_checkout():
               "UPDATE products SET stock = MAX(0, ROUND(stock - ?, 3)) WHERE id = ?",
               (kg_deducted, base_prod_id),
           )
+          cursor.execute("SELECT stock FROM products WHERE id = ?", (base_prod_id,))
+          b_after_row = cursor.fetchone()
+          b_stock_after = float(b_after_row[0] or 0.0) if b_after_row else max(0.0, curr_stock - kg_deducted)
+          track_events.append({
+              "product_id": p_id,
+              "barcode": p_barcode,
+              "product_name": name,
+              "category": p_category,
+              "qty_change": -abs(kg_deducted),
+              "stock_after": b_stock_after,
+          })
           synced_bases.add(base_prod_id)
         else:
+          stock_after = max(0.0, round(curr_stock - float(qty), 3))
           cursor.execute(
               "UPDATE products SET stock = MAX(0, ROUND(stock - ?, 3)) WHERE id = ?",
               (qty, p_id),
           )
+          track_events.append({
+              "product_id": p_id,
+              "barcode": p_barcode,
+              "product_name": name,
+              "category": p_category,
+              "qty_change": -abs(float(qty)),
+              "stock_after": stock_after,
+          })
           synced_bases.add(p_id)
+      else:
+        track_events.append({
+            "product_id": p_id,
+            "barcode": p_barcode,
+            "product_name": name,
+            "category": p_category,
+            "qty_change": -abs(float(qty)),
+            "stock_after": None,
+        })
 
     for b_id in synced_bases:
       cursor.execute("SELECT stock FROM products WHERE id = ?", (b_id,))
@@ -291,6 +402,21 @@ def online_checkout():
               item["gst"],
               item["total"],
           ),
+      )
+
+    for ev in track_events:
+      record_inventory_track(
+          cursor,
+          conn,
+          product_id=ev["product_id"],
+          barcode=ev["barcode"],
+          product_name=ev["product_name"],
+          category=ev["category"],
+          movement_type="SOLD",
+          qty_change=ev["qty_change"],
+          stock_after=ev["stock_after"],
+          source="Online Store",
+          reference_id=f"BILL-{bill_id}",
       )
 
     if customer_phone:

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inventory Management - Swaraj Grocery</title>
+    <title>Inventory &amp; Track List - Swaraj Grocery</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         function filterInventoryTable() {
@@ -13,48 +13,163 @@
                 row.style.display = (!q || text.includes(q)) ? '' : 'none';
             });
         }
+
+        function filterTrackList() {
+            const prodFilter = (document.getElementById('track_product_filter')?.value || '').toLowerCase().trim();
+            const typeFilter = (document.getElementById('track_type_filter')?.value || 'ALL').toUpperCase();
+            const searchQ = (document.getElementById('track_search')?.value || '').toLowerCase().trim();
+
+            document.querySelectorAll('#track-tbody tr.track-row').forEach(function (row) {
+                const rowProd = (row.getAttribute('data-product') || '').toLowerCase();
+                const rowType = (row.getAttribute('data-type') || '').toUpperCase();
+                const rowText = row.innerText.toLowerCase();
+
+                const matchProd = !prodFilter || rowProd === prodFilter;
+                const matchType = typeFilter === 'ALL' || rowType === typeFilter;
+                const matchSearch = !searchQ || rowText.includes(searchQ);
+
+                row.style.display = (matchProd && matchType && matchSearch) ? '' : 'none';
+            });
+        }
+
+        function selectProductTrack(productName) {
+            const sel = document.getElementById('track_product_filter');
+            if (sel) {
+                sel.value = productName;
+                filterTrackList();
+                document.getElementById('server-track-section')?.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
     </script>
 </head>
 <body class="bg-slate-100 font-sans p-4 md:p-6">
     {{ admin_navbar | safe }}
-    <div class="max-w-7xl mx-auto bg-white p-4 md:p-6 rounded-2xl shadow-md border border-slate-200">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-            <h1 class="text-xl font-bold text-blue-700">📦 Store Inventory &amp; Categories Management</h1>
-            <span class="text-xs font-semibold text-slate-500">Product Catalog View</span>
+    <div class="max-w-7xl mx-auto space-y-6">
+        <!-- Product Catalog Card -->
+        <div class="bg-white p-4 md:p-6 rounded-2xl shadow-md border border-slate-200">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                <h1 class="text-xl font-bold text-blue-700">📦 Store Inventory &amp; Categories Management</h1>
+                <span class="text-xs font-semibold text-slate-500">Product Catalog View • IST (Asia/Kolkata)</span>
+            </div>
+
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                <h3 class="font-bold text-sm text-slate-800">Product Catalog</h3>
+                <input type="text" id="inv_search" onkeyup="filterInventoryTable()" placeholder="Search barcode, name, or category..." class="w-full sm:w-72 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 focus:bg-white outline-none">
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse border border-slate-200 text-xs">
+                    <thead>
+                        <tr class="bg-slate-200 text-left">
+                            <th class="p-2.5 border">Barcode</th>
+                            <th class="p-2.5 border">Product Name</th>
+                            <th class="p-2.5 border">Category</th>
+                            <th class="p-2.5 border">Price</th>
+                            <th class="p-2.5 border">Stock</th>
+                            <th class="p-2.5 border text-center">Track</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory-tbody">
+                        {% for p in products %}
+                        {% set pname = p[2] or '' %}
+                        <tr class="inv-row hover:bg-slate-50">
+                            <td class="p-2.5 border font-mono font-bold text-blue-800">{{ p[1] or '-' }}</td>
+                            <td class="p-2.5 border font-medium">{{ pname }}</td>
+                            <td class="p-2.5 border font-semibold text-emerald-700">{{ p[9] if (p|length > 9 and p[9]) else 'Essentials' }}</td>
+                            <td class="p-2.5 border">₹{{ '%.2f'|format((p[3] or 0)|float) }}</td>
+                            <td class="p-2.5 border font-bold text-green-600">{{ p[4] if p[4] is not none else 0 }}</td>
+                            <td class="p-2.5 border text-center">
+                                <button type="button" onclick="selectProductTrack('{{ pname | e }}')" class="bg-slate-800 hover:bg-blue-700 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold transition">
+                                    View History
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="p-4 border text-center text-slate-400 font-medium">No products found in inventory.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
 
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-            <h3 class="font-bold text-sm text-slate-800">Product Catalog</h3>
-            <input type="text" id="inv_search" onkeyup="filterInventoryTable()" placeholder="Search barcode, name, or category..." class="w-full sm:w-72 px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 focus:bg-white outline-none">
-        </div>
+        <!-- Server Product Track List (Sold & Purchased) -->
+        <div id="server-track-section" class="bg-white p-4 md:p-6 rounded-2xl shadow-md border border-slate-200">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900">🕒 Server Product Track List (Sold &amp; Purchased)</h2>
+                    <p class="text-xs text-slate-500">Every sale and purchase registered on the server with Indian date &amp; IST timestamp.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <select id="track_product_filter" onchange="filterTrackList()" class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 font-semibold outline-none">
+                        <option value="">All Products</option>
+                        {% for p in products %}
+                        {% if p[2] %}
+                        <option value="{{ p[2] | e }}">{{ p[2] }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                    <select id="track_type_filter" onchange="filterTrackList()" class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 font-semibold outline-none">
+                        <option value="ALL">All Movements (Sold &amp; Purchased)</option>
+                        <option value="SOLD">Sold Only</option>
+                        <option value="PURCHASED">Purchased Only</option>
+                    </select>
+                    <input type="text" id="track_search" onkeyup="filterTrackList()" placeholder="Search timestamp, ref, product..." class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-slate-50 focus:bg-white outline-none">
+                </div>
+            </div>
 
-        <div class="overflow-x-auto">
-            <table class="w-full border-collapse border border-slate-200 text-xs">
-                <thead>
-                    <tr class="bg-slate-200 text-left">
-                        <th class="p-2.5 border">Barcode</th>
-                        <th class="p-2.5 border">Product Name</th>
-                        <th class="p-2.5 border">Category</th>
-                        <th class="p-2.5 border">Price</th>
-                        <th class="p-2.5 border">Stock</th>
-                    </tr>
-                </thead>
-                <tbody id="inventory-tbody">
-                    {% for p in products %}
-                    <tr class="inv-row hover:bg-slate-50">
-                        <td class="p-2.5 border font-mono font-bold text-blue-800">{{ p[1] or '-' }}</td>
-                        <td class="p-2.5 border font-medium">{{ p[2] or '' }}</td>
-                        <td class="p-2.5 border font-semibold text-emerald-700">{{ p[9] if (p|length > 9 and p[9]) else 'Essentials' }}</td>
-                        <td class="p-2.5 border">₹{{ '%.2f'|format((p[3] or 0)|float) }}</td>
-                        <td class="p-2.5 border font-bold text-green-600">{{ p[4] if p[4] is not none else 0 }}</td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="5" class="p-4 border text-center text-slate-400 font-medium">No products found in inventory.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse border border-slate-200 text-xs">
+                    <thead>
+                        <tr class="bg-slate-800 text-white text-left">
+                            <th class="p-2.5 border border-slate-700">Date (IST)</th>
+                            <th class="p-2.5 border border-slate-700">Indian Timestamp</th>
+                            <th class="p-2.5 border border-slate-700">Product</th>
+                            <th class="p-2.5 border border-slate-700">Type</th>
+                            <th class="p-2.5 border border-slate-700 text-right">Qty Change</th>
+                            <th class="p-2.5 border border-slate-700 text-right">Stock After</th>
+                            <th class="p-2.5 border border-slate-700">Source / Ref</th>
+                        </tr>
+                    </thead>
+                    <tbody id="track-tbody">
+                        {% for t in tracks or [] %}
+                        {% set mtype = (t['movement_type'] if t['movement_type'] is defined else t[5])|upper %}
+                        {% set qty_val = (t['qty_change'] if t['qty_change'] is defined else t[6])|float %}
+                        <tr class="track-row hover:bg-slate-50"
+                            data-product="{{ (t['product_name'] if t['product_name'] is defined else t[3]) | e }}"
+                            data-type="{{ mtype }}">
+                            <td class="p-2.5 border font-mono font-semibold text-slate-700">{{ t['track_date'] if t['track_date'] is defined else t[10] }}</td>
+                            <td class="p-2.5 border font-mono text-blue-900 font-bold">{{ t['ist_timestamp'] if t['ist_timestamp'] is defined else t[11] }}</td>
+                            <td class="p-2.5 border font-semibold text-slate-900">{{ t['product_name'] if t['product_name'] is defined else t[3] }}</td>
+                            <td class="p-2.5 border">
+                                {% if mtype == 'SOLD' %}
+                                <span class="bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full font-extrabold text-[10px]">SOLD</span>
+                                {% else %}
+                                <span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-extrabold text-[10px]">PURCHASED</span>
+                                {% endif %}
+                            </td>
+                            <td class="p-2.5 border text-right font-mono font-bold {% if mtype == 'SOLD' %}text-rose-600{% else %}text-emerald-700{% endif %}">
+                                {{ '%+.2f'|format(qty_val) if (qty_val % 1 != 0) else '%+d'|format(qty_val|int) }}
+                            </td>
+                            <td class="p-2.5 border text-right font-mono text-slate-700">
+                                {% set sa = t['stock_after'] if t['stock_after'] is defined else t[7] %}
+                                {{ sa if sa is not none else '-' }}
+                            </td>
+                            <td class="p-2.5 border text-slate-600">
+                                {{ t['source'] if t['source'] is defined else t[8] }}
+                                {% set ref = t['reference_id'] if t['reference_id'] is defined else t[9] %}
+                                {% if ref %}<span class="text-slate-400 font-mono">({{ ref }})</span>{% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="p-5 border text-center text-slate-400 font-medium">No sold or purchased product entries recorded on the server yet.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </body>

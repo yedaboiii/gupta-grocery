@@ -1,6 +1,80 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import sqlite3
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+
+try:
+  from inventory_tracker import ensure_inventory_track_table, record_inventory_track
+except ImportError:
+  IST = ZoneInfo("Asia/Kolkata")
+
+  def _ist_now():
+    now = datetime.now(IST)
+    return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d %H:%M:%S IST")
+
+  def ensure_inventory_track_table(cursor, conn):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS inventory_tracks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER,
+            barcode TEXT DEFAULT '',
+            product_name TEXT NOT NULL,
+            category TEXT DEFAULT 'Essentials',
+            movement_type TEXT NOT NULL,
+            qty_change REAL NOT NULL,
+            stock_after REAL,
+            source TEXT DEFAULT 'Server',
+            reference_id TEXT DEFAULT '',
+            track_date TEXT NOT NULL,
+            ist_timestamp TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+
+  def record_inventory_track(
+      cursor,
+      conn,
+      *,
+      product_id=None,
+      barcode="",
+      product_name,
+      category="Essentials",
+      movement_type,
+      qty_change,
+      stock_after=None,
+      source="Server",
+      reference_id="",
+  ):
+    ensure_inventory_track_table(cursor, conn)
+    track_date, ist_ts = _ist_now()
+    movement = (movement_type or "").strip().upper()
+    if movement not in ("SOLD", "PURCHASED"):
+      movement = "SOLD" if float(qty_change) < 0 else "PURCHASED"
+
+    cursor.execute(
+        """
+        INSERT INTO inventory_tracks (
+            product_id, barcode, product_name, category,
+            movement_type, qty_change, stock_after,
+            source, reference_id, track_date, ist_timestamp
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            product_id,
+            (barcode or "").strip(),
+            (product_name or "Product").strip(),
+            (category or "Essentials").strip(),
+            movement,
+            float(qty_change),
+            float(stock_after) if stock_after is not None else None,
+            (source or "Server").strip(),
+            str(reference_id or ""),
+            track_date,
+            ist_ts,
+        ),
+    )
+    conn.commit()
 
 pos_bp = Blueprint("pos", __name__)
 pos_cart = []
@@ -30,7 +104,7 @@ def pos_terminal():
 
   # Tax-inclusive subtotal (sum of catalog prices)
   subtotal = sum(item["price"] * item["qty"] for item in pos_cart)
-  
+
   # Backward calculation for tax-inclusive embedded GST
   gst_total = 0.0
   for item in pos_cart:
@@ -70,15 +144,16 @@ def add_to_cart():
         " ?",
         (barcode_scan.strip(),),
     )
+    prod = cursor.fetchone()
   elif product_id:
     cursor.execute(
         "SELECT id, name, price, stock, gst_rate FROM products WHERE id = ?",
         (product_id,),
     )
+    prod = cursor.fetchone()
   else:
     prod = None
 
-  prod = cursor.fetchone()
   conn.close()
 
   if prod:
@@ -130,7 +205,7 @@ def checkout():
   customer_name = request.form.get("customer_name", "Walking Customer")
   customer_phone = request.form.get("customer_phone", "")
   payment_mode = request.form.get("payment_mode", "Cash")
-  
+
   disc_raw = request.form.get("discount", "").strip()
   disc_pct_raw = request.form.get("discount_percent", "").strip()
   cash_raw = request.form.get("cash_tendered", "").strip()
@@ -141,7 +216,7 @@ def checkout():
 
   # Gross subtotal (catalog prices include GST)
   gross_subtotal = sum(item["price"] * item["qty"] for item in pos_cart)
-  
+
   if discount_percent > 0:
     calculated_discount = (gross_subtotal * discount_percent) / 100.0
   else:
@@ -159,7 +234,7 @@ def checkout():
     item_gross = item["price"] * item["qty"]
     # Proportionally distribute discount if any
     item_net_gross = item_gross * (grand_total / gross_subtotal) if gross_subtotal > 0 else 0.0
-    
+
     gst_rate = float(item["gst"])
     taxable_base = item_net_gross / (1.0 + (gst_rate / 100.0))
     gst_amt = item_net_gross - taxable_base
@@ -178,6 +253,7 @@ def checkout():
 
   conn = sqlite3.connect("store_pos.db")
   cursor = conn.cursor()
+  ensure_inventory_track_table(cursor, conn)
 
   if payment_mode == "Credit" and customer_phone:
     cursor.execute(
@@ -248,9 +324,40 @@ def checkout():
             item["total"],
         ),
     )
+
+    p_barcode = ""
+    p_category = "Essentials"
+    prev_stock = 0.0
+    try:
+      cursor.execute(
+          "SELECT barcode, category, stock FROM products WHERE id = ?",
+          (item["id"],),
+      )
+      p_row = cursor.fetchone()
+      if p_row:
+        p_barcode = p_row[0] or ""
+        p_category = p_row[1] or "Essentials"
+        prev_stock = float(p_row[2] or 0.0)
+    except sqlite3.OperationalError:
+      pass
+
+    new_stock = prev_stock - float(item["qty"])
     cursor.execute(
         "UPDATE products SET stock = stock - ? WHERE id = ?",
         (item["qty"], item["id"]),
+    )
+    record_inventory_track(
+        cursor,
+        conn,
+        product_id=item["id"],
+        barcode=p_barcode,
+        product_name=item["name"],
+        category=p_category,
+        movement_type="SOLD",
+        qty_change=-abs(float(item["qty"])),
+        stock_after=new_stock,
+        source="POS Billing",
+        reference_id=f"BILL-{bill_id}",
     )
 
   if customer_phone:

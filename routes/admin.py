@@ -1,11 +1,82 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, Response, session
 import sqlite3
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import json
 import csv
 import io
 from database import db
 from firebase_admin import firestore
+
+try:
+    from inventory_tracker import ensure_inventory_track_table, record_inventory_track
+except ImportError:
+    IST = ZoneInfo("Asia/Kolkata")
+
+    def _ist_now():
+        now = datetime.now(IST)
+        return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d %H:%M:%S IST")
+
+    def ensure_inventory_track_table(cursor, conn):
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS inventory_tracks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_id INTEGER,
+                barcode TEXT DEFAULT '',
+                product_name TEXT NOT NULL,
+                category TEXT DEFAULT 'Essentials',
+                movement_type TEXT NOT NULL,
+                qty_change REAL NOT NULL,
+                stock_after REAL,
+                source TEXT DEFAULT 'Server',
+                reference_id TEXT DEFAULT '',
+                track_date TEXT NOT NULL,
+                ist_timestamp TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+
+    def record_inventory_track(
+        cursor,
+        conn,
+        *,
+        product_id=None,
+        barcode="",
+        product_name,
+        category="Essentials",
+        movement_type,
+        qty_change,
+        stock_after=None,
+        source="Server",
+        reference_id="",
+    ):
+        ensure_inventory_track_table(cursor, conn)
+        track_date, ist_ts = _ist_now()
+        movement = (movement_type or "").strip().upper()
+        if movement not in ("SOLD", "PURCHASED"):
+            movement = "SOLD" if float(qty_change) < 0 else "PURCHASED"
+
+        cursor.execute("""
+            INSERT INTO inventory_tracks (
+                product_id, barcode, product_name, category,
+                movement_type, qty_change, stock_after,
+                source, reference_id, track_date, ist_timestamp
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            product_id,
+            (barcode or "").strip(),
+            (product_name or "Product").strip(),
+            (category or "Essentials").strip(),
+            movement,
+            float(qty_change),
+            float(stock_after) if stock_after is not None else None,
+            (source or "Server").strip(),
+            str(reference_id or ""),
+            track_date,
+            ist_ts,
+        ))
+        conn.commit()
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -344,7 +415,6 @@ def item_master():
                     image_url, is_online, is_active, base_product_id, weight_kg, prod_id
                 ))
 
-                # Sync any child weight variants linked to this item
                 _sync_linked_weight_variants(cursor, prod_id)
                 conn.commit()
                 flash(f"✅ Item Master updated for '{name}'!")
@@ -570,81 +640,28 @@ def import_item_master_csv():
 
     return redirect(url_for("admin.item_master"))
 
-@admin_bp.route("/inventory", methods=["GET", "POST"])
+@admin_bp.route("/inventory", methods=["GET"])
 @admin_required
 def inventory():
     try:
         conn = sqlite3.connect("store_pos.db")
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        action = request.form.get("action")
-        
-        if request.method == "POST":
-            if action == "update":
-                prod_id = request.form.get("prod_id")
-                name = request.form.get("name")
-                price = float(request.form.get("price") or 0.0)
-                stock = int(request.form.get("stock") or 0)
-                category = request.form.get("category", "Essentials")
-                
-                cursor.execute("""
-                    UPDATE products SET name = ?, price = ?, stock = ?, category = ?
-                    WHERE id = ?
-                """, (name, price, stock, category, prod_id))
-                _sync_linked_weight_variants(cursor, prod_id)
-                conn.commit()
-                conn.close()
-                flash(f"Product '{name}' updated successfully!")
-                return redirect(url_for("admin.inventory"))
-                
-            elif action == "delete":
-                prod_id = request.form.get("prod_id")
-                cursor.execute("DELETE FROM products WHERE id = ?", (prod_id,))
-                conn.commit()
-                conn.close()
-                flash("Product deleted successfully!")
-                return redirect(url_for("admin.inventory"))
-                
-            else:
-                barcode = request.form.get("barcode")
-                name = request.form.get("name")
-                price = float(request.form.get("price") or 0.0)
-                stock = int(request.form.get("stock") or 0)
-                gst = float(request.form.get("gst_rate", 5.0) or 5.0)
-                batch_no = request.form.get("batch_no", "GENERAL")
-                expiry_date = request.form.get("expiry_date", "2027-12-31")
-                rack_location = request.form.get("rack_location", "Rack-1 Shelf A")
-                category = request.form.get("category", "Essentials")
-                
-                cursor.execute("SELECT id FROM products WHERE barcode = ?", (barcode,))
-                existing = cursor.fetchone()
-                
-                if existing:
-                    existing_id = existing["id"]
-                    cursor.execute("""
-                        UPDATE products 
-                        SET stock = stock + ?, name = ?, price = ?, category = ?, batch_no = ?, expiry_date = ?, rack_location = ?
-                        WHERE id = ?
-                    """, (stock, name, price, category, batch_no, expiry_date, rack_location, existing_id))
-                    _sync_linked_weight_variants(cursor, existing_id)
-                    conn.commit()
-                    flash(f"Product '{name}' restocked! Added +{stock} to previous stock.")
-                else:
-                    cursor.execute("""
-                        INSERT INTO products (barcode, name, price, stock, gst_rate, batch_no, expiry_date, rack_location, category)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (barcode, name, price, stock, gst, batch_no, expiry_date, rack_location, category))
-                    conn.commit()
-                    flash("New product added to inventory successfully!")
-                
-                conn.close()
-                return redirect(url_for("admin.inventory"))
-                
-        cursor.execute("SELECT * FROM products")
+        ensure_inventory_track_table(cursor, conn)
+
+        cursor.execute("SELECT * FROM products ORDER BY id DESC")
         products = cursor.fetchall()
+
+        cursor.execute("SELECT * FROM inventory_tracks ORDER BY id DESC LIMIT 500")
+        tracks = cursor.fetchall()
+
         conn.close()
-        return render_template("inventory.html", products=products, admin_navbar=ADMIN_NAVBAR_SNIPPET)
-        
+        return render_template(
+            "inventory.html",
+            products=products,
+            tracks=tracks,
+            admin_navbar=ADMIN_NAVBAR_SNIPPET
+        )
     except Exception as e:
         return f"<h3 style='color:red; padding: 20px;'>Inventory Error: {str(e)}</h3><p style='padding: 0 20px;'><a href='/inventory'>&larr; Return to Inventory</a></p>", 500
 
@@ -736,6 +753,7 @@ def purchase_entry():
     conn = sqlite3.connect("store_pos.db")
     cursor = conn.cursor()
     _ensure_item_master_columns(cursor, conn)
+    ensure_inventory_track_table(cursor, conn)
     if request.method == "POST":
         supplier_name = request.form.get("supplier_name")
         invoice_no = request.form.get("invoice_no")
@@ -744,10 +762,13 @@ def purchase_entry():
         total_amount = float(request.form.get("total_amount") or 0.0)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        cursor.execute("SELECT name FROM products WHERE id = ?", (product_id,))
+        cursor.execute("SELECT name, barcode, category, stock FROM products WHERE id = ?", (product_id,))
         prod = cursor.fetchone()
         if prod:
             p_name = prod[0]
+            p_barcode = prod[1] or ""
+            p_category = prod[2] or "Essentials"
+            prev_stock = int(prod[3] or 0)
             items_summary = f"{p_name} (x{qty_added})"
             cursor.execute("""
                 INSERT INTO purchases (supplier_name, invoice_no, items_summary, total_amount, timestamp)
@@ -758,6 +779,19 @@ def purchase_entry():
                 unit_cost = round(total_amount / qty_added, 2)
                 cursor.execute("UPDATE products SET cost_price = ?, supplier_name = COALESCE(NULLIF(?, ''), supplier_name) WHERE id = ?", (unit_cost, supplier_name or "", product_id))
             _sync_linked_weight_variants(cursor, product_id)
+            record_inventory_track(
+                cursor,
+                conn,
+                product_id=product_id,
+                barcode=p_barcode,
+                product_name=p_name,
+                category=p_category,
+                movement_type="PURCHASED",
+                qty_change=abs(float(qty_added)),
+                stock_after=prev_stock + qty_added,
+                source=f"Purchase ({supplier_name or 'Supplier'})",
+                reference_id=invoice_no or "",
+            )
             conn.commit()
             flash("Purchase recorded, unit cost & inventory stock updated successfully!")
     cursor.execute("SELECT id, name, stock FROM products")
