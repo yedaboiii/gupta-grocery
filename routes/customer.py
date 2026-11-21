@@ -2,7 +2,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 import json
 import sqlite3
-from flask import Blueprint, flash, redirect, render_template, request, send_from_directory, url_for
+from flask import Blueprint, Response, flash, redirect, render_template, request, send_from_directory, url_for
 
 try:
   from inventory_tracker import ensure_inventory_track_table, record_inventory_track
@@ -108,6 +108,23 @@ def _ensure_storefront_columns(cursor, conn):
     conn.commit()
   except sqlite3.OperationalError:
     pass
+
+
+@customer_bp.route("/.well-known/assetlinks.json")
+def assetlinks_json():
+  payload = """[
+    {
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.onrender.swaraj_grocery.twa",
+        "sha256_cert_fingerprints": [
+          "0F:3F:39:8A:A1:B5:1D:6A:FD:2F:03:7F:C5:24:C4:EC:CF:F1:B5:48:F7:84:F6:47:5E:A9:1C:14:C6:08:C9:5D"
+        ]
+      }
+    }
+  ]"""
+  return Response(payload, mimetype="application/json")
 
 
 @customer_bp.route("/sw.js")
