@@ -27,7 +27,7 @@
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b border-slate-200 pb-5 gap-4">
             <div>
                 <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">🗂️ Item Master (Central SKU Catalog)</h1>
-                <p class="text-xs text-slate-500 mt-1">Manage SKUs, kg weight variants (e.g., Toor Dal 1kg → 500g, 250g, 2kg, 5kg), cost & +₹ markup, GST/HSN, and online store visibility.</p>
+                <p class="text-xs text-slate-500 mt-1">Manage SKUs, kg weight variants (e.g., Toor Dal 1kg → 500g, 250g, 2kg, 5kg), cost & +₹ markup, GST/HSN, Best Deals, and online store visibility.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
                 <a href="/item_master/export_csv" class="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 px-3.5 py-2 rounded-xl text-xs font-bold transition">
@@ -45,6 +45,7 @@
         <!-- Summary KPI Cards -->
         {% set active_count = items | selectattr('is_active', 'equalto', 1) | list | length %}
         {% set online_count = items | selectattr('is_online', 'equalto', 1) | list | length %}
+        {% set deal_count = items | selectattr('is_best_deal', 'equalto', 1) | list | length %}
         {% set low_count = [] %}
         {% for it in items %}
             {% if it.is_active == 1 and it.stock <= it.reorder_level %}
@@ -52,7 +53,7 @@
             {% endif %}
         {% endfor %}
 
-        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="grid grid-cols-2 lg:grid-cols-6 gap-4">
             <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
                 <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">Total Master SKUs</span>
                 <span class="text-2xl font-black text-slate-900 mt-1 block">{{ items|length }}</span>
@@ -65,11 +66,15 @@
                 <span class="text-[11px] font-bold uppercase tracking-wider text-blue-800 block">Online Store Enabled</span>
                 <span class="text-2xl font-black text-blue-900 mt-1 block">{{ online_count }}</span>
             </div>
-            <div class="bg-amber-50/70 border border-amber-200 rounded-2xl p-4">
-                <span class="text-[11px] font-bold uppercase tracking-wider text-amber-800 block">Below Reorder Level</span>
-                <span class="text-2xl font-black text-amber-900 mt-1 block">{{ low_count|length }}</span>
+            <div class="bg-amber-50/80 border border-amber-200 rounded-2xl p-4">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-amber-800 block">🔥 Best Deals</span>
+                <span class="text-2xl font-black text-amber-900 mt-1 block">{{ deal_count }}</span>
             </div>
-            <div class="col-span-2 lg:col-span-1 bg-teal-50/80 border border-teal-200 rounded-2xl p-4">
+            <div class="bg-rose-50/70 border border-rose-200 rounded-2xl p-4">
+                <span class="text-[11px] font-bold uppercase tracking-wider text-rose-800 block">Below Reorder Level</span>
+                <span class="text-2xl font-black text-rose-900 mt-1 block">{{ low_count|length }}</span>
+            </div>
+            <div class="bg-teal-50/80 border border-teal-200 rounded-2xl p-4">
                 <span class="text-[11px] font-bold uppercase tracking-wider text-teal-800 block">Earned Unit Profit</span>
                 <span class="text-2xl font-black text-teal-900 mt-1 block">₹{{ "%.2f"|format(total_realized_profit | default(0.0)) }}</span>
             </div>
@@ -96,6 +101,7 @@
                     <option value="ALL">All Channels & Status</option>
                     <option value="ONLINE">Online + POS</option>
                     <option value="POS_ONLY">POS Only</option>
+                    <option value="DEALS">🔥 Best Deals Only</option>
                     <option value="ACTIVE">Active Only</option>
                     <option value="INACTIVE">Inactive / Archived</option>
                 </select>
@@ -116,7 +122,7 @@
                             <th class="py-3 px-3.5 font-bold text-right">Sold / Earned</th>
                             <th class="py-3 px-3.5 font-bold text-center">GST / HSN</th>
                             <th class="py-3 px-3.5 font-bold text-center">Stock / Min</th>
-                            <th class="py-3 px-3.5 font-bold text-center">Channel</th>
+                            <th class="py-3 px-3.5 font-bold text-center">Deal / Channel</th>
                             <th class="py-3 px-3.5 font-bold text-center">Status</th>
                             <th class="py-3 px-3.5 font-bold text-center">Actions</th>
                         </tr>
@@ -130,6 +136,7 @@
                             data-search="{{ (item.sku_code ~ ' ' ~ item.barcode ~ ' ' ~ item.name ~ ' ' ~ item.brand ~ ' ' ~ item.pack_size ~ ' ' ~ item.supplier_name ~ ' ' ~ item.hsn_code)|lower }}"
                             data-category="{{ item.category }}"
                             data-online="{{ item.is_online }}"
+                            data-deal="{{ item.is_best_deal | default(0) }}"
                             data-active="{{ item.is_active }}">
                             <td class="py-3 px-3.5 whitespace-nowrap">
                                 <span class="font-mono font-extrabold text-emerald-700 block">{{ item.sku_code }}</span>
@@ -147,6 +154,9 @@
                                             {{ item.name }}
                                             {% if item.pack_size %}
                                             <span class="ml-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[10px] font-extrabold">{{ item.pack_size }}</span>
+                                            {% endif %}
+                                            {% if item.is_best_deal == 1 %}
+                                            <span class="ml-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300 text-[9px] font-extrabold">🔥 Deal</span>
                                             {% endif %}
                                             {% if item.base_product_id %}
                                             <span class="ml-1 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-extrabold">{{ item.weight_kg }}kg linked</span>
@@ -197,6 +207,7 @@
                                         data-expiry="{{ item.expiry_date }}"
                                         data-image="{{ item.image_url }}"
                                         data-online="{{ item.is_online }}"
+                                        data-deal="{{ item.is_best_deal | default(0) }}"
                                         data-active="{{ item.is_active }}"
                                         data-base-id="{{ item.base_product_id or '' }}"
                                         data-weight-kg="{{ item.weight_kg or 1.0 }}"
@@ -220,8 +231,11 @@
                                 </span>
                                 <span class="text-[10px] text-slate-500 block mt-0.5">Min: {{ item.reorder_level }}</span>
                             </td>
-                            <td class="py-3 px-3.5 text-center whitespace-nowrap">
-                                <a href="/item_master/toggle/{{ item.id }}/is_online" title="Click to toggle Online visibility" class="inline-block px-2.5 py-1 rounded-lg font-bold text-[10px] transition {% if item.is_online == 1 %}bg-blue-100 text-blue-800 hover:bg-blue-200{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">
+                            <td class="py-3 px-3.5 text-center whitespace-nowrap space-y-1">
+                                <a href="/item_master/toggle/{{ item.id }}/is_best_deal" title="Click to toggle Best Deal in Online App" class="block px-2.5 py-0.5 rounded-lg font-bold text-[10px] transition {% if item.is_best_deal == 1 %}bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200{% else %}bg-slate-50 text-slate-500 border border-slate-200 hover:bg-slate-100{% endif %}">
+                                    {% if item.is_best_deal == 1 %}🔥 Best Deal{% else %}Standard Deal{% endif %}
+                                </a>
+                                <a href="/item_master/toggle/{{ item.id }}/is_online" title="Click to toggle Online visibility" class="block px-2.5 py-0.5 rounded-lg font-bold text-[10px] transition {% if item.is_online == 1 %}bg-blue-100 text-blue-800 hover:bg-blue-200{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">
                                     {% if item.is_online == 1 %}🌐 Online + POS{% else %}🏪 POS Only{% endif %}
                                 </a>
                             </td>
@@ -254,6 +268,7 @@
                                             data-expiry="{{ item.expiry_date }}"
                                             data-image="{{ item.image_url }}"
                                             data-online="{{ item.is_online }}"
+                                            data-deal="{{ item.is_best_deal | default(0) }}"
                                             data-active="{{ item.is_active }}"
                                             data-base-id="{{ item.base_product_id or '' }}"
                                             data-weight-kg="{{ item.weight_kg or 1.0 }}"
@@ -284,6 +299,7 @@
                                             data-expiry="{{ item.expiry_date }}"
                                             data-image="{{ item.image_url }}"
                                             data-online="{{ item.is_online }}"
+                                            data-deal="{{ item.is_best_deal | default(0) }}"
                                             data-active="{{ item.is_active }}"
                                             data-base-id="{{ item.base_product_id or '' }}"
                                             data-weight-kg="{{ item.weight_kg or 1.0 }}"
@@ -479,6 +495,10 @@
                 </div>
 
                 <div class="flex flex-wrap items-center gap-6 pt-2 border-t border-slate-200">
+                    <label class="inline-flex items-center gap-2 font-extrabold text-amber-800 bg-amber-50 border border-amber-300 px-3 py-1.5 rounded-xl cursor-pointer">
+                        <input type="checkbox" name="is_best_deal" id="f-deal" value="1" class="w-4 h-4 accent-amber-600">
+                        <span>🔥 Best Deal (Show in Online App Deals)</span>
+                    </label>
                     <label class="inline-flex items-center gap-2 font-bold text-slate-700 cursor-pointer">
                         <input type="checkbox" name="is_online" id="f-online" value="1" checked class="w-4 h-4 accent-emerald-600">
                         <span>🌐 Show in Online Storefront</span>
@@ -504,7 +524,7 @@
                 <h3 class="text-base font-black text-slate-900">📥 Bulk Import Item Master (CSV)</h3>
                 <button type="button" onclick="document.getElementById('csv-modal').classList.add('hidden')" class="w-7 h-7 rounded-full bg-slate-100 font-bold">✕</button>
             </div>
-            <p class="text-slate-600 leading-relaxed">Upload a CSV exported from Item Master (with columns: <code class="bg-slate-100 px-1 rounded">sku_code, barcode, name, brand, pack_size, supplier_name, category, unit, mrp, price, cost_price, gst_rate, hsn_code, stock, reorder_level</code>). Existing barcodes/SKUs are updated automatically.</p>
+            <p class="text-slate-600 leading-relaxed">Upload a CSV exported from Item Master (with columns: <code class="bg-slate-100 px-1 rounded">sku_code, barcode, name, brand, pack_size, supplier_name, category, unit, mrp, price, cost_price, gst_rate, hsn_code, stock, reorder_level, is_best_deal</code>). Existing barcodes/SKUs are updated automatically.</p>
             <form action="/item_master/import_csv" method="POST" enctype="multipart/form-data" class="space-y-3">
                 <input type="file" name="csv_file" accept=".csv" required class="w-full p-2.5 border border-slate-300 rounded-xl bg-slate-50">
                 <div class="flex justify-end gap-2">
@@ -541,6 +561,7 @@
                 expiry_date: btn.getAttribute('data-expiry') || '2027-12-31',
                 image_url: btn.getAttribute('data-image') || '',
                 is_online: parseInt(btn.getAttribute('data-online') || '1', 10),
+                is_best_deal: parseInt(btn.getAttribute('data-deal') || '0', 10),
                 is_active: parseInt(btn.getAttribute('data-active') || '1', 10),
                 base_product_id: btn.getAttribute('data-base-id') || '',
                 weight_kg: parseFloat(btn.getAttribute('data-weight-kg') || '1.0') || 1.0
@@ -655,6 +676,7 @@
             document.getElementById('f-batch').value = 'GENERAL';
             document.getElementById('f-expiry').value = '2027-12-31';
             document.getElementById('f-image').value = '';
+            document.getElementById('f-deal').checked = false;
             document.getElementById('f-online').checked = true;
             document.getElementById('f-active').checked = true;
             updateProfitPreview();
@@ -690,6 +712,7 @@
             document.getElementById('f-batch').value = 'GENERAL';
             document.getElementById('f-expiry').value = item.expiry_date || '2027-12-31';
             document.getElementById('f-image').value = item.image_url || '';
+            document.getElementById('f-deal').checked = Number(item.is_best_deal) === 1;
             document.getElementById('f-online').checked = Number(item.is_online) === 1;
             document.getElementById('f-active').checked = true;
 
@@ -735,6 +758,7 @@
             document.getElementById('f-batch').value = item.batch_no || 'GENERAL';
             document.getElementById('f-expiry').value = item.expiry_date || '2027-12-31';
             document.getElementById('f-image').value = item.image_url || '';
+            document.getElementById('f-deal').checked = Number(item.is_best_deal) === 1;
             document.getElementById('f-online').checked = Number(item.is_online) === 1;
             document.getElementById('f-active').checked = Number(item.is_active) === 1;
             updateProfitPreview();
@@ -754,6 +778,7 @@
                 const hay = row.getAttribute('data-search') || '';
                 const rCat = row.getAttribute('data-category') || '';
                 const rOnline = row.getAttribute('data-online') || '1';
+                const rDeal = row.getAttribute('data-deal') || '0';
                 const rActive = row.getAttribute('data-active') || '1';
 
                 const matchQ = !q || hay.includes(q);
@@ -761,6 +786,7 @@
                 let matchCh = true;
                 if (ch === 'ONLINE') matchCh = rOnline === '1';
                 else if (ch === 'POS_ONLY') matchCh = rOnline === '0';
+                else if (ch === 'DEALS') matchCh = rDeal === '1';
                 else if (ch === 'ACTIVE') matchCh = rActive === '1';
                 else if (ch === 'INACTIVE') matchCh = rActive === '0';
 
