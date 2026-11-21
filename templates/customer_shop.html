@@ -98,10 +98,23 @@
 
             document.querySelectorAll('.app-nav-btn').forEach(function (btn) {
                 const isActive = btn.getAttribute('data-tab') === tabName;
+                const pill = btn.querySelector('.nav-icon-pill');
+                const label = btn.querySelector('.nav-label');
+
                 btn.classList.toggle('text-emerald-700', isActive);
-                btn.classList.toggle('font-extrabold', isActive);
-                btn.classList.toggle('text-slate-400', !isActive);
-                btn.classList.toggle('font-semibold', !isActive);
+                btn.classList.toggle('text-slate-500', !isActive);
+
+                if (pill) {
+                    pill.classList.toggle('bg-emerald-100', isActive);
+                    pill.classList.toggle('text-emerald-700', isActive);
+                    pill.classList.toggle('shadow-2xs', isActive);
+                    pill.classList.toggle('bg-transparent', !isActive);
+                    pill.classList.toggle('text-slate-500', !isActive);
+                }
+                if (label) {
+                    label.classList.toggle('font-black', isActive);
+                    label.classList.toggle('font-semibold', !isActive);
+                }
             });
 
             if (tabName === 'orders') {
@@ -213,11 +226,11 @@
             if (!card) return;
 
             card.querySelectorAll('.variant-pill').forEach(function (btn) {
-                btn.classList.remove('bg-emerald-600', 'text-white', 'border-emerald-600', 'shadow-2xs');
+                btn.classList.remove('bg-emerald-600', 'text-white', 'border-emerald-600', 'shadow-xs');
                 btn.classList.add('bg-slate-100', 'text-slate-700', 'border-slate-200');
             });
             pillBtn.classList.remove('bg-slate-100', 'text-slate-700', 'border-slate-200');
-            pillBtn.classList.add('bg-emerald-600', 'text-white', 'border-emerald-600', 'shadow-2xs');
+            pillBtn.classList.add('bg-emerald-600', 'text-white', 'border-emerald-600', 'shadow-xs');
 
             const id = pillBtn.getAttribute('data-id');
             const displayName = pillBtn.getAttribute('data-display-name');
@@ -405,7 +418,7 @@
                     '<div class="w-14 h-14 mx-auto mb-3 rounded-2xl bg-emerald-50 flex items-center justify-center text-2xl">🛍️</div>' +
                     '<h3 class="text-sm font-black text-slate-800">No recent orders on this device</h3>' +
                     '<p class="text-xs text-slate-500 mt-1">Place your first order from the Shop tab and track it here anytime.</p>' +
-                    '<button type="button" onclick="switchAppTab(\'shop\')" class="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl text-xs font-black shadow-2xs transition">Start Shopping →</button>' +
+                    '<button type="button" onclick="switchAppTab(\'shop\')" class="mt-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-5 py-2.5 rounded-2xl text-xs font-black shadow-sm active:scale-95 transition">Start Shopping →</button>' +
                     '</div>';
                 return;
             }
@@ -425,7 +438,7 @@
                     '<span class="font-black text-emerald-700 text-sm tabular-nums">₹' + o.total + '</span>' +
                     '</div>' +
                     (canReorder
-                        ? '<button type="button" onclick="reorderPastOrder(' + idx + ')" class="shrink-0 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 px-3.5 py-2 rounded-2xl text-[11px] font-black transition">🔁 Reorder</button>'
+                        ? '<button type="button" onclick="reorderPastOrder(' + idx + ')" class="shrink-0 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-3.5 py-2 rounded-2xl text-[11px] font-black shadow-xs active:scale-95 transition">🔁 Reorder</button>'
                         : '') +
                     '</div>' +
                     '</div>'
@@ -445,15 +458,15 @@
 
                 if (cart[prodId]) {
                     container.innerHTML =
-                        '<div class="flex items-center justify-between bg-emerald-600 text-white rounded-xl px-1.5 py-1.5 shadow-2xs w-full transition-all">' +
-                        '<button type="button" onclick="decrementCart(\'' + prodId + '\')" class="w-6 h-6 flex items-center justify-center font-black hover:bg-emerald-700 rounded-lg text-sm leading-none">-</button>' +
+                        '<div class="flex items-center justify-between bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl px-1.5 py-1.5 shadow-sm ring-1 ring-emerald-500/30 w-full transition-all">' +
+                        '<button type="button" onclick="decrementCart(\'' + prodId + '\')" class="w-6 h-6 flex items-center justify-center font-black bg-white/15 hover:bg-white/25 active:scale-90 rounded-xl text-sm leading-none transition">−</button>' +
                         '<span class="font-black text-xs px-1 tabular-nums">' + cart[prodId].qty + '</span>' +
-                        '<button type="button" onclick="incProdFromEl(this)" class="w-6 h-6 flex items-center justify-center font-black hover:bg-emerald-700 rounded-lg text-sm leading-none">+</button>' +
+                        '<button type="button" onclick="incProdFromEl(this)" class="w-6 h-6 flex items-center justify-center font-black bg-white/15 hover:bg-white/25 active:scale-90 rounded-xl text-sm leading-none transition">+</button>' +
                         '</div>';
                 } else {
                     container.innerHTML =
-                        '<button type="button" onclick="addProdFromEl(this)" class="w-full bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300/90 py-2 rounded-2xl text-xs font-black transition shadow-2xs tracking-wider">' +
-                        'ADD' +
+                        '<button type="button" onclick="addProdFromEl(this)" class="w-full bg-emerald-50 hover:bg-emerald-600 active:scale-95 text-emerald-700 hover:text-white border border-emerald-300/90 hover:border-emerald-600 py-2 rounded-2xl text-xs font-black transition-all shadow-2xs tracking-wider">' +
+                        '+ ADD' +
                         '</button>';
                 }
             });
@@ -493,20 +506,20 @@
                 infoDiv.appendChild(subSpan);
 
                 const ctrlDiv = document.createElement('div');
-                ctrlDiv.className = 'flex items-center space-x-2 bg-emerald-600 text-white rounded-xl px-2.5 py-1 shadow-2xs shrink-0';
+                ctrlDiv.className = 'flex items-center space-x-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl px-2 py-1 shadow-xs shrink-0';
                 const decBtn = document.createElement('button');
                 decBtn.type = 'button';
-                decBtn.className = 'font-bold px-1';
-                decBtn.innerText = '-';
+                decBtn.className = 'w-5 h-5 flex items-center justify-center font-black bg-white/15 hover:bg-white/25 active:scale-90 rounded-lg text-xs transition';
+                decBtn.innerText = '−';
                 decBtn.onclick = function () { decrementCart(id); };
 
                 const qtySpan = document.createElement('span');
-                qtySpan.className = 'font-bold text-xs tabular-nums';
+                qtySpan.className = 'font-black text-xs px-0.5 tabular-nums';
                 qtySpan.innerText = qtyNum;
 
                 const incBtn = document.createElement('button');
                 incBtn.type = 'button';
-                incBtn.className = 'font-bold px-1';
+                incBtn.className = 'w-5 h-5 flex items-center justify-center font-black bg-white/15 hover:bg-white/25 active:scale-90 rounded-lg text-xs transition';
                 incBtn.innerText = '+';
                 incBtn.onclick = function () { addToCart(id, item.name, unitPrice, rate, unitMrp); };
 
@@ -530,7 +543,7 @@
             document.getElementById('basket-count').innerText = totalCount + ' Items';
             document.getElementById('cart_data_input').value = JSON.stringify(cart);
 
-            const savingsBanner = document.getElementById('basket-savings-banner');
+            const savingsBanner = document.getElementById('cart-savings-banner');
             const savingsVal = document.getElementById('basket-savings-amount');
             if (savingsBanner && savingsVal) {
                 if (savingsTotal > 0) {
@@ -565,9 +578,12 @@
             currentCategory = cat;
             document.querySelectorAll('.cat-btn').forEach(function (b) {
                 const matches = b.getAttribute('data-cat') === cat;
-                b.classList.toggle('bg-emerald-600', matches);
+                b.classList.toggle('bg-gradient-to-r', matches);
+                b.classList.toggle('from-emerald-600', matches);
+                b.classList.toggle('to-teal-600', matches);
                 b.classList.toggle('text-white', matches);
-                b.classList.toggle('shadow-2xs', matches);
+                b.classList.toggle('border-emerald-600', matches);
+                b.classList.toggle('shadow-xs', matches);
                 b.classList.toggle('bg-white', !matches);
                 b.classList.toggle('border-slate-200', !matches);
                 b.classList.toggle('text-slate-700', !matches);
@@ -664,7 +680,7 @@
                 <span id="header-delivery-area" class="text-[11px] text-slate-500 font-medium">Ambedkar Chowk ▾</span>
             </div>
             <div class="flex items-center gap-2 md:hidden">
-                <button type="button" onclick="installStoreApp()" class="install-app-trigger hidden bg-emerald-600 text-white px-2.5 py-1 rounded-xl text-[11px] font-extrabold shadow-2xs">
+                <button type="button" onclick="installStoreApp()" class="install-app-trigger hidden bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-3 py-1.5 rounded-xl text-[11px] font-extrabold shadow-xs active:scale-95 transition">
                     📲 Install
                 </button>
                 <a href="/admin_login" class="admin-only-link text-xs font-bold text-slate-600 hover:text-emerald-600 transition">Admin</a>
@@ -677,15 +693,15 @@
             </div>
         </div>
         <div class="hidden md:flex items-center space-x-3">
-            <button type="button" onclick="pickCategoryFromGrid('Saved')" class="text-xs font-bold text-slate-600 hover:text-rose-600 transition">❤️ Saved (<span id="saved-count-pill">0</span>)</button>
-            <button type="button" onclick="switchAppTab('orders')" class="text-xs font-bold text-slate-600 hover:text-emerald-600 transition">📦 My Orders</button>
-            <button type="button" onclick="installStoreApp()" class="install-app-trigger hidden bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 px-3.5 py-2 rounded-2xl font-extrabold text-xs transition shadow-2xs">
+            <button type="button" onclick="pickCategoryFromGrid('Saved')" class="px-3 py-2 rounded-2xl bg-rose-50/70 hover:bg-rose-100 text-rose-700 border border-rose-200/70 text-xs font-extrabold active:scale-95 transition">❤️ Saved (<span id="saved-count-pill">0</span>)</button>
+            <button type="button" onclick="switchAppTab('orders')" class="px-3 py-2 rounded-2xl bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-extrabold active:scale-95 transition">📦 My Orders</button>
+            <button type="button" onclick="installStoreApp()" class="install-app-trigger hidden bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 px-3.5 py-2 rounded-2xl font-extrabold text-xs active:scale-95 transition shadow-2xs">
                 📲 Install App
             </button>
             <a href="/admin_login" class="admin-only-link text-xs font-bold text-slate-600 hover:text-emerald-600 transition">Admin Login</a>
-            <button type="button" onclick="toggleCartDrawer()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl font-bold text-xs flex items-center space-x-2 shadow-sm transition transform active:scale-95">
+            <button type="button" onclick="toggleCartDrawer()" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white px-5 py-2.5 rounded-2xl font-black text-xs flex items-center space-x-2 shadow-sm active:scale-95 transition">
                 <span>🛒 My Basket</span>
-                <span id="basket-count" class="bg-emerald-800 px-2 py-0.5 rounded-lg text-[10px] font-mono">0 Items</span>
+                <span id="basket-count" class="bg-black/20 px-2 py-0.5 rounded-lg text-[10px] font-mono">0 Items</span>
             </button>
         </div>
     </header>
@@ -715,24 +731,24 @@
                 </div>
                 <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
                     <span class="text-[10px] text-slate-400 font-bold mr-0.5">Popular:</span>
-                    <button type="button" onclick="quickSearch('Atta')" class="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-[10px] font-bold transition">Atta</button>
-                    <button type="button" onclick="quickSearch('Sugar')" class="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-[10px] font-bold transition">Sugar</button>
-                    <button type="button" onclick="quickSearch('Oil')" class="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-[10px] font-bold transition">Oil</button>
-                    <button type="button" onclick="quickSearch('Dal')" class="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 text-[10px] font-bold transition">Dal</button>
+                    <button type="button" onclick="quickSearch('Atta')" class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-emerald-600 text-slate-700 hover:text-white active:scale-95 text-[10px] font-extrabold transition">Atta</button>
+                    <button type="button" onclick="quickSearch('Sugar')" class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-emerald-600 text-slate-700 hover:text-white active:scale-95 text-[10px] font-extrabold transition">Sugar</button>
+                    <button type="button" onclick="quickSearch('Oil')" class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-emerald-600 text-slate-700 hover:text-white active:scale-95 text-[10px] font-extrabold transition">Oil</button>
+                    <button type="button" onclick="quickSearch('Dal')" class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-emerald-600 text-slate-700 hover:text-white active:scale-95 text-[10px] font-extrabold transition">Dal</button>
                 </div>
             </div>
 
             <!-- Horizontal Category Pills -->
             <div class="flex gap-2 overflow-x-auto pb-3 mb-4 no-scrollbar">
-                <button type="button" data-cat="All" onclick="filterCategory('All', this)" class="cat-btn px-3.5 py-2 bg-emerald-600 text-white rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs transition">🌿 All Items</button>
-                <button type="button" data-cat="Deals" onclick="filterCategory('Deals', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">🔥 Best Deals</button>
-                <button type="button" data-cat="Saved" onclick="filterCategory('Saved', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">❤️ Saved</button>
-                <button type="button" data-cat="Grains & Flour" onclick="filterCategory('Grains & Flour', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">🌾 Grains & Flour</button>
-                <button type="button" data-cat="Essentials" onclick="filterCategory('Essentials', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">🧂 Essentials</button>
-                <button type="button" data-cat="Oils & Ghee" onclick="filterCategory('Oils & Ghee', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">🌻 Oils & Ghee</button>
-                <button type="button" data-cat="Pulses & Dal" onclick="filterCategory('Pulses & Dal', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">🫘 Pulses & Dal</button>
-                <button type="button" data-cat="Beverages" onclick="filterCategory('Beverages', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">☕ Beverages</button>
-                <button type="button" data-cat="Cosmetics" onclick="filterCategory('Cosmetics', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">💄 Cosmetics</button>
+                <button type="button" data-cat="All" onclick="filterCategory('All', this)" class="cat-btn px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white border border-emerald-600 rounded-2xl text-xs font-extrabold whitespace-nowrap shadow-xs active:scale-95 transition">🌿 All Items</button>
+                <button type="button" data-cat="Deals" onclick="filterCategory('Deals', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-extrabold whitespace-nowrap shadow-2xs hover:border-emerald-300 active:scale-95 transition">🔥 Best Deals</button>
+                <button type="button" data-cat="Saved" onclick="filterCategory('Saved', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-extrabold whitespace-nowrap shadow-2xs hover:border-emerald-300 active:scale-95 transition">❤️ Saved</button>
+                <button type="button" data-cat="Grains & Flour" onclick="filterCategory('Grains & Flour', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-extrabold whitespace-nowrap shadow-2xs hover:border-emerald-300 active:scale-95 transition">🌾 Grains & Flour</button>
+                <button type="button" data-cat="Essentials" onclick="filterCategory('Essentials', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-extrabold whitespace-nowrap shadow-2xs hover:border-emerald-300 active:scale-95 transition">🧂 Essentials</button>
+                <button type="button" data-cat="Oils & Ghee" onclick="filterCategory('Oils & Ghee', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-extrabold whitespace-nowrap shadow-2xs hover:border-emerald-300 active:scale-95 transition">🌻 Oils & Ghee</button>
+                <button type="button" data-cat="Pulses & Dal" onclick="filterCategory('Pulses & Dal', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-extrabold whitespace-nowrap shadow-2xs hover:border-emerald-300 active:scale-95 transition">🫘 Pulses & Dal</button>
+                <button type="button" data-cat="Beverages" onclick="filterCategory('Beverages', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-extrabold whitespace-nowrap shadow-2xs hover:border-emerald-300 active:scale-95 transition">☕ Beverages</button>
+                <button type="button" data-cat="Cosmetics" onclick="filterCategory('Cosmetics', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-extrabold whitespace-nowrap shadow-2xs hover:border-emerald-300 active:scale-95 transition">💄 Cosmetics</button>
             </div>
 
             <!-- Section Header + Sort Bar -->
@@ -793,7 +809,7 @@
                                     data-stock="{{ v.stock }}"
                                     data-gst="{{ v.gst }}"
                                     data-image="{{ v.image_url }}"
-                                    class="variant-pill px-2 py-0.5 rounded-lg text-[10px] font-extrabold border transition {% if loop.first %}bg-emerald-600 text-white border-emerald-600 shadow-2xs{% else %}bg-slate-100 text-slate-700 border-slate-200 hover:border-emerald-400{% endif %}">
+                                    class="variant-pill px-2 py-0.5 rounded-lg text-[10px] font-extrabold border active:scale-95 transition {% if loop.first %}bg-emerald-600 text-white border-emerald-600 shadow-2xs{% else %}bg-slate-100 text-slate-700 border-slate-200 hover:border-emerald-400{% endif %}">
                                 {{ v.pack_size }}
                             </button>
                             {% endfor %}
@@ -822,8 +838,8 @@
                              data-price="{{ '%.2f'|format(v0.price) }}"
                              data-mrp="{{ '%.2f'|format(v0.mrp) }}"
                              data-gst="{{ v0.gst }}">
-                            <button type="button" onclick="addProdFromEl(this)" class="w-full bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300/90 py-2 rounded-2xl text-xs font-black transition shadow-2xs tracking-wide">
-                                ADD
+                            <button type="button" onclick="addProdFromEl(this)" class="w-full bg-emerald-50 hover:bg-emerald-600 active:scale-95 text-emerald-700 hover:text-white border border-emerald-300/90 hover:border-emerald-600 py-2 rounded-2xl text-xs font-black transition-all shadow-2xs tracking-wider">
+                                + ADD
                             </button>
                         </div>
                     </div>
@@ -835,7 +851,7 @@
             <div id="empty-search-state" class="hidden bg-white rounded-3xl p-8 text-center border border-slate-200 mt-4">
                 <div class="text-3xl mb-2">🔍</div>
                 <p class="text-xs font-bold text-slate-700">No items match your current filter.</p>
-                <button type="button" onclick="document.getElementById('search-input').value=''; pickCategoryFromGrid('All');" class="mt-3 bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-extrabold">Show All Items</button>
+                <button type="button" onclick="document.getElementById('search-input').value=''; pickCategoryFromGrid('All');" class="mt-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-4 py-2 rounded-xl text-xs font-black shadow-xs active:scale-95 transition">Show All Items</button>
             </div>
         </section>
 
@@ -846,47 +862,47 @@
                 <p class="text-xs text-slate-500">Tap a section to browse daily essentials</p>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <button type="button" onclick="pickCategoryFromGrid('All')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 text-left transition">
+                <button type="button" onclick="pickCategoryFromGrid('All')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 active:scale-[0.98] text-left transition">
                     <span class="w-11 h-11 rounded-2xl bg-emerald-50 flex items-center justify-center text-2xl mb-3">🌿</span>
                     <span class="text-xs font-black text-slate-900 block">All Groceries</span>
                     <span class="text-[10px] text-slate-500">Complete store catalog</span>
                 </button>
-                <button type="button" onclick="pickCategoryFromGrid('Deals')" class="bg-amber-50/70 p-5 rounded-3xl border border-amber-200/90 shadow-2xs hover:border-amber-400 text-left transition">
+                <button type="button" onclick="pickCategoryFromGrid('Deals')" class="bg-amber-50/70 p-5 rounded-3xl border border-amber-200/90 shadow-2xs hover:border-amber-400 active:scale-[0.98] text-left transition">
                     <span class="w-11 h-11 rounded-2xl bg-amber-100 flex items-center justify-center text-2xl mb-3">🔥</span>
                     <span class="text-xs font-black text-amber-950 block">Best Deals</span>
                     <span class="text-[10px] text-amber-700">Discounted MRP items</span>
                 </button>
-                <button type="button" onclick="pickCategoryFromGrid('Saved')" class="bg-rose-50/60 p-5 rounded-3xl border border-rose-200/80 shadow-2xs hover:border-rose-400 text-left transition">
+                <button type="button" onclick="pickCategoryFromGrid('Saved')" class="bg-rose-50/60 p-5 rounded-3xl border border-rose-200/80 shadow-2xs hover:border-rose-400 active:scale-[0.98] text-left transition">
                     <span class="w-11 h-11 rounded-2xl bg-rose-100 flex items-center justify-center text-2xl mb-3">❤️</span>
                     <span class="text-xs font-black text-rose-950 block">Saved Items</span>
                     <span class="text-[10px] text-rose-700">Your favorite groceries</span>
                 </button>
-                <button type="button" onclick="pickCategoryFromGrid('Grains & Flour')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 text-left transition">
+                <button type="button" onclick="pickCategoryFromGrid('Grains & Flour')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 active:scale-[0.98] text-left transition">
                     <span class="w-11 h-11 rounded-2xl bg-stone-100 flex items-center justify-center text-2xl mb-3">🌾</span>
                     <span class="text-xs font-black text-slate-900 block">Grains & Flour</span>
                     <span class="text-[10px] text-slate-500">Atta, rice, rava & grains</span>
                 </button>
-                <button type="button" onclick="pickCategoryFromGrid('Essentials')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 text-left transition">
+                <button type="button" onclick="pickCategoryFromGrid('Essentials')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 active:scale-[0.98] text-left transition">
                     <span class="w-11 h-11 rounded-2xl bg-stone-100 flex items-center justify-center text-2xl mb-3">🧂</span>
                     <span class="text-xs font-black text-slate-900 block">Daily Essentials</span>
                     <span class="text-[10px] text-slate-500">Salt, sugar, spices & more</span>
                 </button>
-                <button type="button" onclick="pickCategoryFromGrid('Oils & Ghee')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 text-left transition">
+                <button type="button" onclick="pickCategoryFromGrid('Oils & Ghee')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 active:scale-[0.98] text-left transition">
                     <span class="w-11 h-11 rounded-2xl bg-stone-100 flex items-center justify-center text-2xl mb-3">🌻</span>
                     <span class="text-xs font-black text-slate-900 block">Oils & Ghee</span>
                     <span class="text-[10px] text-slate-500">Cooking oils & pure ghee</span>
                 </button>
-                <button type="button" onclick="pickCategoryFromGrid('Pulses & Dal')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 text-left transition">
+                <button type="button" onclick="pickCategoryFromGrid('Pulses & Dal')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 active:scale-[0.98] text-left transition">
                     <span class="w-11 h-11 rounded-2xl bg-stone-100 flex items-center justify-center text-2xl mb-3">🫘</span>
                     <span class="text-xs font-black text-slate-900 block">Pulses & Dal</span>
                     <span class="text-[10px] text-slate-500">Toor, moong, chana & masoor</span>
                 </button>
-                <button type="button" onclick="pickCategoryFromGrid('Beverages')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 text-left transition">
+                <button type="button" onclick="pickCategoryFromGrid('Beverages')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 active:scale-[0.98] text-left transition">
                     <span class="w-11 h-11 rounded-2xl bg-stone-100 flex items-center justify-center text-2xl mb-3">☕</span>
                     <span class="text-xs font-black text-slate-900 block">Beverages</span>
                     <span class="text-[10px] text-slate-500">Tea, coffee & health drinks</span>
                 </button>
-                <button type="button" onclick="pickCategoryFromGrid('Cosmetics')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 text-left transition">
+                <button type="button" onclick="pickCategoryFromGrid('Cosmetics')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 active:scale-[0.98] text-left transition">
                     <span class="w-11 h-11 rounded-2xl bg-stone-100 flex items-center justify-center text-2xl mb-3">💄</span>
                     <span class="text-xs font-black text-slate-900 block">Personal Care</span>
                     <span class="text-[10px] text-slate-500">Soaps, creams & cosmetics</span>
@@ -901,7 +917,7 @@
                     <h2 class="text-lg font-black text-slate-900">My Orders</h2>
                     <p class="text-xs text-slate-500">Recent orders placed from this phone</p>
                 </div>
-                <button type="button" onclick="switchAppTab('shop')" class="text-xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-3 py-1.5 rounded-xl">+ New Order</button>
+                <button type="button" onclick="switchAppTab('shop')" class="text-xs font-black text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 px-3.5 py-1.5 rounded-xl active:scale-95 transition">+ New Order</button>
             </div>
             <div id="order-history-list" class="space-y-3"></div>
         </section>
@@ -920,9 +936,9 @@
             <div class="flex justify-between items-center border-b border-slate-100 pb-4 mb-4">
                 <div class="flex items-center gap-2">
                     <h2 class="text-lg font-black text-slate-800">🛒 My Basket</h2>
-                    <button type="button" onclick="clearCart()" class="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg hover:bg-rose-100">Clear</button>
+                    <button type="button" onclick="clearCart()" class="text-[10px] font-extrabold text-rose-600 bg-rose-50 hover:bg-rose-100 active:scale-95 px-2.5 py-1 rounded-xl transition">Clear</button>
                 </div>
-                <button type="button" onclick="toggleCartDrawer()" class="text-slate-400 hover:text-slate-700 font-bold text-lg bg-slate-100 hover:bg-slate-200 w-8 h-8 rounded-full flex items-center justify-center transition">✕</button>
+                <button type="button" onclick="toggleCartDrawer()" class="text-slate-500 hover:text-slate-800 font-bold text-base bg-slate-100 hover:bg-slate-200 active:scale-90 w-8 h-8 rounded-full flex items-center justify-center transition">✕</button>
             </div>
             <div id="cart-savings-banner" class="hidden mb-3 bg-emerald-50 border border-emerald-200/80 text-emerald-800 rounded-2xl px-3.5 py-2 text-xs font-extrabold flex justify-between items-center">
                 <span>🎉 Total MRP Savings in Basket</span>
@@ -987,7 +1003,7 @@
                         <option value="Cash">💵 Cash on Delivery (COD)</option>
                     </select>
                 </div>
-                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 rounded-2xl font-black text-xs transition shadow-md transform active:scale-95 tracking-wide">
+                <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white py-3.5 rounded-2xl font-black text-xs transition shadow-md active:scale-[0.98] tracking-wide">
                     🚀 Place Order & Generate Tax Invoice
                 </button>
             </form>
@@ -997,35 +1013,35 @@
     <!-- Floating Cart Pill -->
     <div id="floating-cart-bar" class="translate-y-36 opacity-0 pointer-events-none fixed bottom-20 md:bottom-6 left-4 right-4 md:left-auto md:right-8 md:w-96 bg-zinc-900/95 backdrop-blur-md text-white p-3.5 shadow-2xl z-40 flex justify-between items-center rounded-3xl border border-zinc-700 transition-all duration-300 ease-in-out">
         <div class="flex items-center space-x-3">
-            <div class="w-10 h-10 bg-emerald-600 rounded-2xl flex items-center justify-center font-black shadow-2xs">🛒</div>
+            <div class="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center font-black shadow-2xs">🛒</div>
             <div>
                 <span id="floating-item-count" class="text-xs font-bold text-emerald-400 block leading-none">0 items</span>
                 <span id="floating-total-amt" class="text-sm font-black tracking-wide mt-0.5 block tabular-nums">₹0.00</span>
             </div>
         </div>
-        <button type="button" onclick="toggleCartDrawer()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl font-black text-xs shadow-2xs transition transform active:scale-95 tracking-wide">
+        <button type="button" onclick="toggleCartDrawer()" class="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white px-5 py-2.5 rounded-2xl font-black text-xs shadow-xs active:scale-95 transition tracking-wide">
             View Cart →
         </button>
     </div>
 
     <!-- Native Android Bottom Tab Bar (Mobile Only) -->
     <nav class="md:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-slate-200/90 z-40 px-2 py-1.5 flex justify-around items-center shadow-lg">
-        <button type="button" data-tab="shop" onclick="switchAppTab('shop')" class="app-nav-btn flex flex-col items-center justify-center py-1 px-3 text-emerald-700 font-extrabold transition">
-            <span class="text-lg leading-none">🏠</span>
-            <span class="text-[10px] mt-1">Shop</span>
+        <button type="button" data-tab="shop" onclick="switchAppTab('shop')" class="app-nav-btn flex flex-col items-center justify-center py-0.5 px-3 text-emerald-700 active:scale-95 transition">
+            <span class="nav-icon-pill w-10 h-7 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-base leading-none shadow-2xs transition">🏠</span>
+            <span class="nav-label text-[10px] font-black mt-0.5">Shop</span>
         </button>
-        <button type="button" data-tab="categories" onclick="switchAppTab('categories')" class="app-nav-btn flex flex-col items-center justify-center py-1 px-3 text-slate-400 font-semibold transition">
-            <span class="text-lg leading-none">🗂️</span>
-            <span class="text-[10px] mt-1">Categories</span>
+        <button type="button" data-tab="categories" onclick="switchAppTab('categories')" class="app-nav-btn flex flex-col items-center justify-center py-0.5 px-3 text-slate-500 active:scale-95 transition">
+            <span class="nav-icon-pill w-10 h-7 rounded-2xl flex items-center justify-center text-base leading-none transition">🗂️</span>
+            <span class="nav-label text-[10px] font-semibold mt-0.5">Categories</span>
         </button>
-        <button type="button" data-tab="orders" onclick="switchAppTab('orders')" class="app-nav-btn flex flex-col items-center justify-center py-1 px-3 text-slate-400 font-semibold transition">
-            <span class="text-lg leading-none">📦</span>
-            <span class="text-[10px] mt-1">Orders</span>
+        <button type="button" data-tab="orders" onclick="switchAppTab('orders')" class="app-nav-btn flex flex-col items-center justify-center py-0.5 px-3 text-slate-500 active:scale-95 transition">
+            <span class="nav-icon-pill w-10 h-7 rounded-2xl flex items-center justify-center text-base leading-none transition">📦</span>
+            <span class="nav-label text-[10px] font-semibold mt-0.5">Orders</span>
         </button>
-        <button type="button" onclick="toggleCartDrawer()" class="relative flex flex-col items-center justify-center py-1 px-3 text-slate-600 font-bold transition">
-            <span class="text-lg leading-none">🛒</span>
-            <span id="nav-basket-badge" class="hidden absolute top-0.5 right-1.5 bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">0</span>
-            <span class="text-[10px] mt-1">Basket</span>
+        <button type="button" onclick="toggleCartDrawer()" class="relative flex flex-col items-center justify-center py-0.5 px-3 text-slate-600 active:scale-95 transition">
+            <span class="w-10 h-7 rounded-2xl flex items-center justify-center text-base leading-none">🛒</span>
+            <span id="nav-basket-badge" class="hidden absolute top-0 right-1.5 bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none shadow-2xs">0</span>
+            <span class="text-[10px] font-semibold mt-0.5">Basket</span>
         </button>
     </nav>
 </body>
