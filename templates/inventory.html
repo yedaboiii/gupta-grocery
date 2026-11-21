@@ -465,5 +465,29 @@
             </div>
         </div>
     </div>
+
+    <script>
+        (function () {
+            let currentMaxTrackId = null;
+
+            function pollLatestTracks() {
+                fetch('/api/latest_inventory_tracks')
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        if (typeof data.max_id === 'number') {
+                            if (currentMaxTrackId === null) {
+                                currentMaxTrackId = data.max_id;
+                            } else if (data.max_id > currentMaxTrackId) {
+                                window.location.reload();
+                            }
+                        }
+                    })
+                    .catch(function () {});
+            }
+
+            pollLatestTracks();
+            setInterval(pollLatestTracks, 10000);
+        })();
+    </script>
 </body>
 </html>

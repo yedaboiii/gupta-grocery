@@ -8,13 +8,18 @@ import io
 from database import db
 from firebase_admin import firestore
 
+NAGPUR_IST = ZoneInfo("Asia/Kolkata")
+
+
+def _nagpur_now():
+    return datetime.now(NAGPUR_IST)
+
+
 try:
     from inventory_tracker import ensure_inventory_track_table, record_inventory_track
 except ImportError:
-    IST = ZoneInfo("Asia/Kolkata")
-
     def _ist_now():
-        now = datetime.now(IST)
+        now = _nagpur_now()
         return now.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d %H:%M:%S IST")
 
     def ensure_inventory_track_table(cursor, conn):
@@ -31,9 +36,19 @@ except ImportError:
                 source TEXT DEFAULT 'Server',
                 reference_id TEXT DEFAULT '',
                 track_date TEXT NOT NULL,
-                ist_timestamp TEXT NOT NULL
+                ist_timestamp TEXT NOT NULL,
+                item_code TEXT DEFAULT '',
+                unit TEXT DEFAULT 'pcs'
             )
         """)
+        for col_sql in [
+            "ALTER TABLE inventory_tracks ADD COLUMN item_code TEXT DEFAULT ''",
+            "ALTER TABLE inventory_tracks ADD COLUMN unit TEXT DEFAULT 'pcs'",
+        ]:
+            try:
+                cursor.execute(col_sql)
+            except sqlite3.OperationalError:
+                pass
         conn.commit()
 
     def record_inventory_track(
@@ -49,6 +64,8 @@ except ImportError:
         stock_after=None,
         source="Server",
         reference_id="",
+        item_code="",
+        unit="",
     ):
         ensure_inventory_track_table(cursor, conn)
         track_date, ist_ts = _ist_now()
@@ -56,13 +73,34 @@ except ImportError:
         if movement not in ("SOLD", "PURCHASED"):
             movement = "SOLD" if float(qty_change) < 0 else "PURCHASED"
 
+        resolved_code = (item_code or "").strip()
+        resolved_unit = (unit or "").strip()
+        if product_id and (not resolved_code or not resolved_unit):
+            try:
+                cursor.execute("SELECT sku_code, unit, pack_size FROM products WHERE id = ?", (product_id,))
+                p_info = cursor.fetchone()
+                if p_info:
+                    if not resolved_code:
+                        resolved_code = (p_info[0] or f"SG-{int(product_id):04d}").strip()
+                    if not resolved_unit:
+                        u_str = (p_info[1] or "pcs").strip()
+                        p_str = (p_info[2] or "").strip()
+                        resolved_unit = f"{p_str} ({u_str})" if (p_str and p_str.lower() != u_str.lower()) else u_str
+            except sqlite3.OperationalError:
+                if not resolved_code and product_id:
+                    resolved_code = f"SG-{int(product_id):04d}"
+
+        if not resolved_unit:
+            resolved_unit = "pcs"
+
         cursor.execute("""
             INSERT INTO inventory_tracks (
                 product_id, barcode, product_name, category,
                 movement_type, qty_change, stock_after,
-                source, reference_id, track_date, ist_timestamp
+                source, reference_id, track_date, ist_timestamp,
+                item_code, unit
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             product_id,
             (barcode or "").strip(),
@@ -75,6 +113,8 @@ except ImportError:
             str(reference_id or ""),
             track_date,
             ist_ts,
+            resolved_code,
+            resolved_unit,
         ))
         conn.commit()
 
@@ -203,6 +243,22 @@ def unread_orders_count():
     count = cursor.fetchone()[0] or 0
     conn.close()
     return {"count": count}
+
+@admin_bp.route("/api/latest_inventory_tracks")
+@admin_required
+def latest_inventory_tracks():
+    conn = sqlite3.connect("store_pos.db")
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    ensure_inventory_track_table(cursor, conn)
+
+    cursor.execute("SELECT MAX(id) AS max_id, COUNT(*) AS total_count FROM inventory_tracks")
+    row = cursor.fetchone()
+    max_id = int(row["max_id"] or 0) if row else 0
+    total_count = int(row["total_count"] or 0) if row else 0
+
+    conn.close()
+    return {"max_id": max_id, "total_count": total_count}
 
 @admin_bp.route("/online_orders")
 @admin_required
@@ -647,6 +703,7 @@ def inventory():
         conn = sqlite3.connect("store_pos.db")
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
+        _ensure_item_master_columns(cursor, conn)
         ensure_inventory_track_table(cursor, conn)
 
         cursor.execute("SELECT * FROM products ORDER BY id DESC")
@@ -760,15 +817,19 @@ def purchase_entry():
         product_id = request.form.get("product_id")
         qty_added = int(request.form.get("qty") or 0)
         total_amount = float(request.form.get("total_amount") or 0.0)
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = _nagpur_now().strftime("%Y-%m-%d %H:%M:%S")
         
-        cursor.execute("SELECT name, barcode, category, stock FROM products WHERE id = ?", (product_id,))
+        cursor.execute("SELECT name, barcode, category, stock, sku_code, unit, pack_size FROM products WHERE id = ?", (product_id,))
         prod = cursor.fetchone()
         if prod:
             p_name = prod[0]
             p_barcode = prod[1] or ""
             p_category = prod[2] or "Essentials"
             prev_stock = int(prod[3] or 0)
+            p_code = prod[4] or (f"SG-{int(product_id):04d}" if str(product_id).isdigit() else "")
+            p_unit = prod[5] or "pcs"
+            p_pack = prod[6] or ""
+            disp_unit = f"{p_pack} ({p_unit})" if (p_pack and p_pack.lower() != p_unit.lower()) else p_unit
             items_summary = f"{p_name} (x{qty_added})"
             cursor.execute("""
                 INSERT INTO purchases (supplier_name, invoice_no, items_summary, total_amount, timestamp)
@@ -791,6 +852,8 @@ def purchase_entry():
                 stock_after=prev_stock + qty_added,
                 source=f"Purchase ({supplier_name or 'Supplier'})",
                 reference_id=invoice_no or "",
+                item_code=p_code,
+                unit=disp_unit,
             )
             conn.commit()
             flash("Purchase recorded, unit cost & inventory stock updated successfully!")
@@ -838,7 +901,7 @@ def expenses():
         title = request.form.get("title")
         amount = float(request.form.get("amount") or 0.0)
         category = request.form.get("category", "General")
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = _nagpur_now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("""
             INSERT INTO expenses (title, amount, category, timestamp)
             VALUES (?, ?, ?, ?)
@@ -948,7 +1011,7 @@ def gstr_export():
     gstr_data = {
         "gstin": "27AAAAA0000A1Z5",
         "store_name": "Swaraj Grocery, Katol",
-        "return_period": datetime.now().strftime("%m%Y"),
+        "return_period": _nagpur_now().strftime("%m%Y"),
         "b2cs": []
     }
     for b in bills:
