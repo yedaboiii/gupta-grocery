@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#059669">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -11,9 +11,35 @@
     <link rel="manifest" href="/static/manifest.json">
     <title>Swaraj Grocery - Online Store</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* Hide Admin Login automatically when opened inside the installed Android APK */
+        @media (display-mode: standalone) {
+            .admin-only-link { display: none !important; }
+        }
+    </style>
     <script>
+        const CART_STORAGE_KEY = 'swaraj_grocery_cart_v1';
+        const PROFILE_STORAGE_KEY = 'swaraj_grocery_profile_v1';
+        const ORDERS_STORAGE_KEY = 'swaraj_grocery_orders_v1';
+
         let cart = {};
+        let currentCategory = 'All';
         let deferredInstallPrompt = null;
+
+        try {
+            const savedCart = localStorage.getItem(CART_STORAGE_KEY);
+            if (savedCart) cart = JSON.parse(savedCart) || {};
+        } catch (e) {
+            cart = {};
+        }
+
+        function saveCartToStorage() {
+            try {
+                localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+            } catch (e) {}
+        }
 
         window.addEventListener('beforeinstallprompt', function (e) {
             e.preventDefault();
@@ -47,12 +73,36 @@
             });
         }
 
+        function switchAppTab(tabName) {
+            const shopView = document.getElementById('tab-view-shop');
+            const categoriesView = document.getElementById('tab-view-categories');
+            const ordersView = document.getElementById('tab-view-orders');
+
+            if (shopView) shopView.classList.toggle('hidden', tabName !== 'shop');
+            if (categoriesView) categoriesView.classList.toggle('hidden', tabName !== 'categories');
+            if (ordersView) ordersView.classList.toggle('hidden', tabName !== 'orders');
+
+            document.querySelectorAll('.app-nav-btn').forEach(function (btn) {
+                const isActive = btn.getAttribute('data-tab') === tabName;
+                btn.classList.toggle('text-emerald-600', isActive);
+                btn.classList.toggle('font-extrabold', isActive);
+                btn.classList.toggle('text-slate-400', !isActive);
+                btn.classList.toggle('font-semibold', !isActive);
+            });
+
+            if (tabName === 'orders') {
+                renderOrderHistory();
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
         function addToCart(id, name, price, gst) {
             if (!cart[id]) {
                 cart[id] = { name: name, price: parseFloat(price) || 0, gst: parseFloat(gst) || 0, qty: 1 };
             } else {
                 cart[id].qty += 1;
             }
+            saveCartToStorage();
             updateUI();
         }
 
@@ -63,6 +113,13 @@
                     delete cart[id];
                 }
             }
+            saveCartToStorage();
+            updateUI();
+        }
+
+        function clearCart() {
+            cart = {};
+            saveCartToStorage();
             updateUI();
         }
 
@@ -103,6 +160,9 @@
             const stock = pillBtn.getAttribute('data-stock') || '0';
             const gst = pillBtn.getAttribute('data-gst') || '5';
             const imgUrl = pillBtn.getAttribute('data-image') || '';
+
+            card.setAttribute('data-price', price.toFixed(2));
+            card.setAttribute('data-savings', savings.toFixed(2));
 
             const stockEl = card.querySelector('.card-stock');
             if (stockEl) stockEl.innerText = 'Stock: ' + stock;
@@ -168,6 +228,95 @@
             }
         }
 
+        function loadSavedCustomerProfile() {
+            try {
+                const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
+                if (!raw) return;
+                const prof = JSON.parse(raw);
+                if (prof.name) document.getElementById('customer_name_input').value = prof.name;
+                if (prof.phone) document.getElementById('customer_phone_input').value = prof.phone;
+                if (prof.area) document.getElementById('area_input').value = prof.area;
+                if (prof.house_no) document.getElementById('house_no_input').value = prof.house_no;
+                if (prof.locality_town) document.getElementById('locality_town_input').value = prof.locality_town;
+                syncHeaderLocation();
+            } catch (e) {}
+        }
+
+        function handleCheckoutSubmit() {
+            document.getElementById('cart_data_input').value = JSON.stringify(cart);
+
+            const name = (document.getElementById('customer_name_input')?.value || '').trim();
+            const phone = (document.getElementById('customer_phone_input')?.value || '').trim();
+            const area = (document.getElementById('area_input')?.value || '').trim();
+            const houseNo = (document.getElementById('house_no_input')?.value || '').trim();
+            const localityTown = (document.getElementById('locality_town_input')?.value || 'Katol').trim();
+            const paymentMode = document.getElementById('payment_mode_input')?.value || 'Online UPI';
+
+            let totalAmt = 0;
+            let itemSummary = [];
+            for (let id in cart) {
+                totalAmt += (parseFloat(cart[id].price) || 0) * (parseInt(cart[id].qty) || 1);
+                itemSummary.push(cart[id].name + ' x' + cart[id].qty);
+            }
+
+            try {
+                localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({
+                    name: name,
+                    phone: phone,
+                    area: area,
+                    house_no: houseNo,
+                    locality_town: localityTown
+                }));
+
+                const existingOrders = JSON.parse(localStorage.getItem(ORDERS_STORAGE_KEY) || '[]');
+                existingOrders.unshift({
+                    date: new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+                    items: itemSummary.join(', '),
+                    total: totalAmt.toFixed(2),
+                    payment: paymentMode,
+                    address: [houseNo, area, localityTown].filter(Boolean).join(', ')
+                });
+                localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(existingOrders.slice(0, 15)));
+                localStorage.removeItem(CART_STORAGE_KEY);
+            } catch (e) {}
+        }
+
+        function renderOrderHistory() {
+            const listEl = document.getElementById('order-history-list');
+            if (!listEl) return;
+            let orders = [];
+            try {
+                orders = JSON.parse(localStorage.getItem(ORDERS_STORAGE_KEY) || '[]');
+            } catch (e) {}
+
+            if (!orders.length) {
+                listEl.innerHTML =
+                    '<div class="bg-white rounded-3xl p-8 text-center border border-slate-200 shadow-xs">' +
+                    '<div class="text-4xl mb-2">🛍️</div>' +
+                    '<h3 class="text-sm font-extrabold text-slate-800">No recent orders on this device</h3>' +
+                    '<p class="text-xs text-slate-500 mt-1">Place your first order from the Shop tab and track it here anytime.</p>' +
+                    '<button type="button" onclick="switchAppTab(\'shop\')" class="mt-4 bg-emerald-600 text-white px-5 py-2.5 rounded-2xl text-xs font-black shadow">Start Shopping →</button>' +
+                    '</div>';
+                return;
+            }
+
+            listEl.innerHTML = orders.map(function (o, idx) {
+                return (
+                    '<div class="bg-white rounded-3xl p-4 border border-slate-200 shadow-xs space-y-2">' +
+                    '<div class="flex justify-between items-center">' +
+                    '<span class="text-[10px] font-extrabold uppercase tracking-wider bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full">Order #' + (orders.length - idx) + ' • ' + o.payment + '</span>' +
+                    '<span class="text-[11px] font-semibold text-slate-400">' + o.date + '</span>' +
+                    '</div>' +
+                    '<p class="text-xs font-bold text-slate-800 leading-relaxed">' + o.items + '</p>' +
+                    '<div class="flex justify-between items-center pt-2 border-t border-slate-100 text-xs">' +
+                    '<span class="text-slate-500 truncate max-w-[65%]">📍 ' + (o.address || 'Katol') + '</span>' +
+                    '<span class="font-black text-emerald-700 text-sm">₹' + o.total + '</span>' +
+                    '</div>' +
+                    '</div>'
+                );
+            }).join('');
+        }
+
         function updateUI() {
             let subtotal = 0;
             let gstTotal = 0;
@@ -194,6 +343,7 @@
 
             const container = document.getElementById('cart-items');
             const floatingBar = document.getElementById('floating-cart-bar');
+            const navBadge = document.getElementById('nav-basket-badge');
             container.innerHTML = '';
 
             for (let id in cart) {
@@ -209,6 +359,7 @@
                 rowEl.className = 'flex justify-between items-center bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs mb-2 shadow-sm';
 
                 const infoDiv = document.createElement('div');
+                infoDiv.className = 'pr-2';
                 const titleSpan = document.createElement('span');
                 titleSpan.className = 'font-bold text-slate-800 block';
                 titleSpan.innerText = item.name;
@@ -219,7 +370,7 @@
                 infoDiv.appendChild(subSpan);
 
                 const ctrlDiv = document.createElement('div');
-                ctrlDiv.className = 'flex items-center space-x-2 bg-emerald-600 text-white rounded-xl px-3 py-1 shadow';
+                ctrlDiv.className = 'flex items-center space-x-2 bg-emerald-600 text-white rounded-xl px-2.5 py-1 shadow shrink-0';
                 const decBtn = document.createElement('button');
                 decBtn.type = 'button';
                 decBtn.className = 'font-bold px-1';
@@ -227,7 +378,7 @@
                 decBtn.onclick = function () { decrementCart(id); };
 
                 const qtySpan = document.createElement('span');
-                qtySpan.className = 'font-bold text-xs';
+                qtySpan.className = 'font-bold text-xs tabular-nums';
                 qtySpan.innerText = item.qty;
 
                 const incBtn = document.createElement('button');
@@ -256,11 +407,20 @@
             document.getElementById('basket-count').innerText = totalCount + ' Items';
             document.getElementById('cart_data_input').value = JSON.stringify(cart);
 
+            if (navBadge) {
+                if (totalCount > 0) {
+                    navBadge.innerText = totalCount;
+                    navBadge.classList.remove('hidden');
+                } else {
+                    navBadge.classList.add('hidden');
+                }
+            }
+
             if (totalCount === 0) {
-                if (floatingBar) floatingBar.classList.add('translate-y-32', 'opacity-0');
+                if (floatingBar) floatingBar.classList.add('translate-y-36', 'opacity-0', 'pointer-events-none');
             } else {
                 if (floatingBar) {
-                    floatingBar.classList.remove('translate-y-32', 'opacity-0');
+                    floatingBar.classList.remove('translate-y-36', 'opacity-0', 'pointer-events-none');
                     document.getElementById('floating-item-count').innerText = totalCount + (totalCount === 1 ? ' item' : ' items');
                     document.getElementById('floating-total-amt').innerText = '₹' + grandTotal.toFixed(2);
                 }
@@ -268,51 +428,105 @@
         }
 
         function filterCategory(cat, btn) {
+            currentCategory = cat;
             document.querySelectorAll('.cat-btn').forEach(function (b) {
-                b.classList.remove('bg-emerald-600', 'text-white', 'shadow-md');
-                b.classList.add('bg-white', 'border-slate-200', 'text-slate-700', 'hover:bg-slate-50');
+                const matches = b.getAttribute('data-cat') === cat;
+                b.classList.toggle('bg-emerald-600', matches);
+                b.classList.toggle('text-white', matches);
+                b.classList.toggle('shadow-md', matches);
+                b.classList.toggle('bg-white', !matches);
+                b.classList.toggle('border-slate-200', !matches);
+                b.classList.toggle('text-slate-700', !matches);
             });
-            btn.classList.remove('bg-white', 'border-slate-200', 'text-slate-700', 'hover:bg-slate-50');
-            btn.classList.add('bg-emerald-600', 'text-white', 'shadow-md');
+            applyAllFilters();
+        }
 
-            const cards = document.getElementsByClassName('product-card');
-            for (let card of cards) {
-                if (cat === 'All' || card.getAttribute('data-category') === cat) {
-                    card.style.display = 'flex';
-                } else {
-                    card.style.display = 'none';
-                }
+        function pickCategoryFromGrid(cat) {
+            switchAppTab('shop');
+            filterCategory(cat, null);
+            const heading = document.getElementById('products-heading');
+            if (heading) {
+                heading.innerText = cat === 'All' ? 'Explore Products' : (cat === 'Deals' ? "🔥 Today's Best Deals" : cat);
             }
         }
 
         function searchProducts() {
-            const query = document.getElementById('search-input').value.toLowerCase();
+            applyAllFilters();
+        }
+
+        function sortProducts(mode) {
+            const grid = document.getElementById('product-grid');
+            if (!grid) return;
+            const cards = Array.from(grid.getElementsByClassName('product-card'));
+            cards.sort(function (a, b) {
+                const idxA = parseInt(a.getAttribute('data-index') || '0');
+                const idxB = parseInt(b.getAttribute('data-index') || '0');
+                const priceA = parseFloat(a.getAttribute('data-price') || '0');
+                const priceB = parseFloat(b.getAttribute('data-price') || '0');
+                const saveA = parseFloat(a.getAttribute('data-savings') || '0');
+                const saveB = parseFloat(b.getAttribute('data-savings') || '0');
+
+                if (mode === 'price_asc') return priceA - priceB;
+                if (mode === 'price_desc') return priceB - priceA;
+                if (mode === 'savings_desc') return saveB - saveA;
+                return idxA - idxB;
+            });
+            cards.forEach(function (card) { grid.appendChild(card); });
+        }
+
+        function applyAllFilters() {
+            const query = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
             const cards = document.getElementsByClassName('product-card');
+            let visibleCount = 0;
+
             for (let card of cards) {
-                const name = card.getAttribute('data-name').toLowerCase();
-                if (name.includes(query)) {
+                const name = (card.getAttribute('data-name') || '').toLowerCase();
+                const cat = card.getAttribute('data-category') || '';
+                const savings = parseFloat(card.getAttribute('data-savings') || '0');
+
+                const matchesSearch = !query || name.includes(query) || cat.toLowerCase().includes(query);
+                const matchesCat =
+                    currentCategory === 'All' ||
+                    (currentCategory === 'Deals' && savings > 0) ||
+                    cat === currentCategory;
+
+                if (matchesSearch && matchesCat) {
                     card.style.display = 'flex';
+                    visibleCount++;
                 } else {
                     card.style.display = 'none';
                 }
             }
+
+            const emptyState = document.getElementById('empty-search-state');
+            if (emptyState) {
+                emptyState.classList.toggle('hidden', visibleCount > 0);
+            }
         }
+
+        window.addEventListener('DOMContentLoaded', function () {
+            loadSavedCustomerProfile();
+            updateUI();
+        });
     </script>
 </head>
-<body class="bg-slate-100 font-sans pb-32 md:pb-16 text-slate-900">
+<body class="bg-slate-100 font-sans pb-36 md:pb-16 text-slate-900 select-none">
     <!-- Top Navbar -->
-    <header class="bg-white/90 backdrop-blur-md shadow-xs sticky top-0 z-40 px-4 md:px-8 py-3.5 flex flex-col md:flex-row justify-between items-center border-b border-slate-200 gap-3">
+    <header class="bg-white/95 backdrop-blur-md shadow-xs sticky top-0 z-40 px-4 md:px-8 py-3 flex flex-col md:flex-row justify-between items-center border-b border-slate-200 gap-2.5">
         <div class="flex justify-between items-center w-full md:w-auto">
-            <a href="/" class="text-2xl font-black italic tracking-tighter text-amber-500">Swaraj Grocery's</a>
+            <div class="flex items-center gap-2.5">
+                <a href="/" onclick="switchAppTab('shop'); return false;" class="text-xl md:text-2xl font-black italic tracking-tighter text-amber-500">Swaraj Grocery's</a>
+                <span class="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-extrabold px-2 py-0.5 rounded-full">⚡ Katol</span>
+            </div>
             <div onclick="toggleCartDrawer()" class="hidden md:flex flex-col border-l pl-4 border-slate-200 cursor-pointer">
                 <span id="header-delivery-city" class="text-xs font-black text-slate-800 uppercase tracking-wide">Home Delivery in Katol</span>
                 <span id="header-delivery-area" class="text-[11px] text-slate-500 font-medium">Ambedkar Chowk ▾</span>
             </div>
             <div class="flex items-center gap-2 md:hidden">
                 <button type="button" onclick="installStoreApp()" class="install-app-trigger hidden bg-emerald-600 text-white px-2.5 py-1 rounded-xl text-[11px] font-extrabold shadow-xs">
-                    📲 Install App
+                    📲 Install
                 </button>
-                <a href="/admin_login" class="text-xs font-bold text-slate-600 hover:text-emerald-600 transition">Admin Login</a>
+                <a href="/admin_login" class="admin-only-link text-xs font-bold text-slate-600 hover:text-emerald-600 transition">Admin</a>
             </div>
         </div>
         <div class="w-full md:flex-1 md:max-w-xl md:mx-6">
@@ -322,10 +536,11 @@
             </div>
         </div>
         <div class="hidden md:flex items-center space-x-3">
+            <button type="button" onclick="switchAppTab('orders')" class="text-xs font-bold text-slate-600 hover:text-emerald-600 transition">📦 My Orders</button>
             <button type="button" onclick="installStoreApp()" class="install-app-trigger hidden bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 px-3.5 py-2 rounded-2xl font-extrabold text-xs transition shadow-xs">
                 📲 Install App
             </button>
-            <a href="/admin_login" class="text-xs font-bold text-slate-600 hover:text-emerald-600 transition">Admin Login</a>
+            <a href="/admin_login" class="admin-only-link text-xs font-bold text-slate-600 hover:text-emerald-600 transition">Admin Login</a>
             <button type="button" onclick="toggleCartDrawer()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl font-bold text-xs flex items-center space-x-2 shadow-md transition transform active:scale-95">
                 <span>🛒 My Basket</span>
                 <span id="basket-count" class="bg-emerald-800 px-2 py-0.5 rounded-lg text-[10px] font-mono">0 Items</span>
@@ -334,34 +549,52 @@
     </header>
 
     <main class="max-w-7xl mx-auto px-4 md:px-8 py-4 md:py-6">
-        <!-- Hero Banner -->
-        <div class="bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 rounded-3xl p-6 md:p-8 text-white shadow-xl mb-6 flex justify-between items-center relative overflow-hidden">
-            <div class="max-w-xl z-10">
-                <span class="bg-emerald-800/80 backdrop-blur-sm text-emerald-100 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider border border-emerald-500/30">Fresh Daily Essentials</span>
-                <h1 class="text-2xl md:text-4xl font-black mt-2 tracking-tight">Quality groceries at your doorstep.</h1>
-                <p class="text-xs md:text-sm text-emerald-100 mt-1.5 font-medium opacity-90">Fresh quality daily essentials delivered straight to your home in Katol.</p>
+
+        <!-- TAB 1: MAIN SHOP VIEW -->
+        <section id="tab-view-shop">
+            <!-- Hero Banner -->
+            <div class="bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 rounded-3xl p-5 md:p-8 text-white shadow-lg mb-5 flex justify-between items-center relative overflow-hidden">
+                <div class="max-w-xl z-10">
+                    <span class="bg-emerald-800/80 backdrop-blur-sm text-emerald-100 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider border border-emerald-500/30">Fresh Daily Essentials</span>
+                    <h1 class="text-xl md:text-4xl font-black mt-2 tracking-tight">Quality groceries at your doorstep.</h1>
+                    <p class="text-xs md:text-sm text-emerald-100 mt-1 font-medium opacity-90">Fast doorstep delivery across Katol • UPI & Cash on Delivery</p>
+                </div>
+                <div class="text-5xl md:text-7xl opacity-90 select-none drop-shadow-lg ml-3">🛒</div>
             </div>
-            <div class="hidden md:block text-7xl opacity-90 select-none drop-shadow-lg">🛒</div>
-        </div>
 
-        <!-- Categories Bar -->
-        <div class="flex gap-2.5 overflow-x-auto pb-3 mb-6 no-scrollbar">
-            <button type="button" onclick="filterCategory('All', this)" class="cat-btn px-4 py-2 bg-emerald-600 text-white rounded-2xl text-xs font-bold whitespace-nowrap shadow-md transition">🌿 All Items</button>
-            <button type="button" onclick="filterCategory('Grains & Flour', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🌾 Grains & Flour</button>
-            <button type="button" onclick="filterCategory('Essentials', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🧂 Essentials</button>
-            <button type="button" onclick="filterCategory('Oils & Ghee', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🌻 Oils & Ghee</button>
-            <button type="button" onclick="filterCategory('Pulses & Dal', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🫘 Pulses & Dal</button>
-            <button type="button" onclick="filterCategory('Beverages', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">☕ Beverages</button>
-            <button type="button" onclick="filterCategory('Cosmetics', this)" class="cat-btn px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">💄 Cosmetics</button>
-        </div>
+            <!-- Horizontal Category Pills -->
+            <div class="flex gap-2 overflow-x-auto pb-3 mb-4 no-scrollbar">
+                <button type="button" data-cat="All" onclick="filterCategory('All', this)" class="cat-btn px-3.5 py-2 bg-emerald-600 text-white rounded-2xl text-xs font-bold whitespace-nowrap shadow-md transition">🌿 All Items</button>
+                <button type="button" data-cat="Deals" onclick="filterCategory('Deals', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🔥 Best Deals</button>
+                <button type="button" data-cat="Grains & Flour" onclick="filterCategory('Grains & Flour', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🌾 Grains & Flour</button>
+                <button type="button" data-cat="Essentials" onclick="filterCategory('Essentials', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🧂 Essentials</button>
+                <button type="button" data-cat="Oils & Ghee" onclick="filterCategory('Oils & Ghee', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🌻 Oils & Ghee</button>
+                <button type="button" data-cat="Pulses & Dal" onclick="filterCategory('Pulses & Dal', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">🫘 Pulses & Dal</button>
+                <button type="button" data-cat="Beverages" onclick="filterCategory('Beverages', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">☕ Beverages</button>
+                <button type="button" data-cat="Cosmetics" onclick="filterCategory('Cosmetics', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm hover:bg-slate-50 transition">💄 Cosmetics</button>
+            </div>
 
-        <!-- Product Grid (Grouped by Item Name with Pack-Size Variant Selector Pills) -->
-        <div class="w-full">
-            <h2 class="text-base font-extrabold text-slate-800 mb-4 tracking-tight">Explore Products</h2>
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+            <!-- Section Header + Sort Bar -->
+            <div class="flex items-center justify-between gap-2 mb-4">
+                <h2 id="products-heading" class="text-base font-extrabold text-slate-800 tracking-tight">Explore Products</h2>
+                <select onchange="sortProducts(this.value)" class="bg-white border border-slate-200 text-slate-700 text-[11px] font-bold px-3 py-1.5 rounded-xl shadow-xs outline-none focus:border-emerald-500">
+                    <option value="default">Sort: Featured</option>
+                    <option value="price_asc">Price: Low to High</option>
+                    <option value="price_desc">Price: High to Low</option>
+                    <option value="savings_desc">Biggest Savings</option>
+                </select>
+            </div>
+
+            <!-- Product Grid -->
+            <div id="product-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
                 {% for group in grouped_products %}
                 {% set v0 = group.variants[0] %}
-                <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-emerald-300 transition duration-300" data-category="{{ group.category }}" data-name="{{ group.name }}">
+                <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-emerald-300 transition duration-300"
+                     data-index="{{ loop.index0 }}"
+                     data-category="{{ group.category }}"
+                     data-name="{{ group.name }}"
+                     data-price="{{ '%.2f'|format(v0.price) }}"
+                     data-savings="{{ '%.2f'|format(v0.savings) }}">
                     <div>
                         <div class="h-32 md:h-36 bg-slate-50 rounded-2xl mb-3 overflow-hidden flex items-center justify-center border border-slate-100 p-2 relative shadow-inner">
                             {% if group.image_url %}
@@ -376,7 +609,6 @@
                         <span class="text-[9px] bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-md font-extrabold uppercase tracking-wider">{{ group.category }}</span>
                         <h3 class="font-bold text-xs text-slate-900 mt-1.5 line-clamp-2 leading-relaxed">{{ group.name }}</h3>
 
-                        <!-- Pack-Size Variant Pills (Shows multiple pills when variants exist, or single pack badge) -->
                         {% if group.variants|length > 1 %}
                         <div class="flex flex-wrap gap-1 mt-2">
                             {% for v in group.variants %}
@@ -424,7 +656,76 @@
                 </div>
                 {% endfor %}
             </div>
-        </div>
+
+            <!-- Empty Search Fallback -->
+            <div id="empty-search-state" class="hidden bg-white rounded-3xl p-8 text-center border border-slate-200 mt-4">
+                <div class="text-3xl mb-2">🔍</div>
+                <p class="text-xs font-bold text-slate-700">No matching products found.</p>
+                <button type="button" onclick="document.getElementById('search-input').value=''; pickCategoryFromGrid('All');" class="mt-3 bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-extrabold">Show All Items</button>
+            </div>
+        </section>
+
+        <!-- TAB 2: VISUAL CATEGORIES GRID -->
+        <section id="tab-view-categories" class="hidden space-y-4">
+            <div>
+                <h2 class="text-lg font-black text-slate-900">Shop by Category</h2>
+                <p class="text-xs text-slate-500">Tap a section to browse daily essentials</p>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <button type="button" onclick="pickCategoryFromGrid('All')" class="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs hover:border-emerald-400 text-left transition">
+                    <span class="text-3xl block mb-2">🌿</span>
+                    <span class="text-xs font-black text-slate-900 block">All Groceries</span>
+                    <span class="text-[10px] text-slate-500">Complete store catalog</span>
+                </button>
+                <button type="button" onclick="pickCategoryFromGrid('Deals')" class="bg-amber-50/70 p-5 rounded-3xl border border-amber-200 shadow-xs hover:border-amber-400 text-left transition">
+                    <span class="text-3xl block mb-2">🔥</span>
+                    <span class="text-xs font-black text-amber-900 block">Best Deals</span>
+                    <span class="text-[10px] text-amber-700">Discounted MRP items</span>
+                </button>
+                <button type="button" onclick="pickCategoryFromGrid('Grains & Flour')" class="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs hover:border-emerald-400 text-left transition">
+                    <span class="text-3xl block mb-2">🌾</span>
+                    <span class="text-xs font-black text-slate-900 block">Grains & Flour</span>
+                    <span class="text-[10px] text-slate-500">Atta, rice, rava & grains</span>
+                </button>
+                <button type="button" onclick="pickCategoryFromGrid('Essentials')" class="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs hover:border-emerald-400 text-left transition">
+                    <span class="text-3xl block mb-2">🧂</span>
+                    <span class="text-xs font-black text-slate-900 block">Daily Essentials</span>
+                    <span class="text-[10px] text-slate-500">Salt, sugar, spices & more</span>
+                </button>
+                <button type="button" onclick="pickCategoryFromGrid('Oils & Ghee')" class="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs hover:border-emerald-400 text-left transition">
+                    <span class="text-3xl block mb-2">🌻</span>
+                    <span class="text-xs font-black text-slate-900 block">Oils & Ghee</span>
+                    <span class="text-[10px] text-slate-500">Cooking oils & pure ghee</span>
+                </button>
+                <button type="button" onclick="pickCategoryFromGrid('Pulses & Dal')" class="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs hover:border-emerald-400 text-left transition">
+                    <span class="text-3xl block mb-2">🫘</span>
+                    <span class="text-xs font-black text-slate-900 block">Pulses & Dal</span>
+                    <span class="text-[10px] text-slate-500">Toor, moong, chana & masoor</span>
+                </button>
+                <button type="button" onclick="pickCategoryFromGrid('Beverages')" class="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs hover:border-emerald-400 text-left transition">
+                    <span class="text-3xl block mb-2">☕</span>
+                    <span class="text-xs font-black text-slate-900 block">Beverages</span>
+                    <span class="text-[10px] text-slate-500">Tea, coffee & health drinks</span>
+                </button>
+                <button type="button" onclick="pickCategoryFromGrid('Cosmetics')" class="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs hover:border-emerald-400 text-left transition">
+                    <span class="text-3xl block mb-2">💄</span>
+                    <span class="text-xs font-black text-slate-900 block">Personal Care</span>
+                    <span class="text-[10px] text-slate-500">Soaps, creams & cosmetics</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- TAB 3: MY RECENT ORDERS -->
+        <section id="tab-view-orders" class="hidden space-y-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-black text-slate-900">My Orders</h2>
+                    <p class="text-xs text-slate-500">Recent orders placed from this phone</p>
+                </div>
+                <button type="button" onclick="switchAppTab('shop')" class="text-xs font-extrabold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl">+ New Order</button>
+            </div>
+            <div id="order-history-list" class="space-y-3"></div>
+        </section>
 
         <footer class="mt-10 pt-4 border-t border-slate-200 flex flex-wrap justify-between items-center gap-2 text-[11px] text-slate-500">
             <span>Swaraj Grocery • Katol</span>
@@ -437,7 +738,10 @@
     <div id="cart-drawer" class="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col justify-between p-6 border-l border-slate-200 overflow-y-auto">
         <div>
             <div class="flex justify-between items-center border-b border-slate-100 pb-4 mb-4">
-                <h2 class="text-lg font-black text-slate-800">🛒 My Basket</h2>
+                <div class="flex items-center gap-2">
+                    <h2 class="text-lg font-black text-slate-800">🛒 My Basket</h2>
+                    <button type="button" onclick="clearCart()" class="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg hover:bg-rose-100">Clear</button>
+                </div>
                 <button type="button" onclick="toggleCartDrawer()" class="text-slate-400 hover:text-slate-700 font-bold text-lg bg-slate-100 hover:bg-slate-200 w-8 h-8 rounded-full flex items-center justify-center transition">✕</button>
             </div>
             <div id="cart-items" class="overflow-y-auto max-h-[28vh] space-y-2 pr-1">
@@ -457,15 +761,15 @@
                 <span>Grand Total:</span>
                 <span id="grand-total-display" class="text-emerald-600 font-extrabold text-base">₹0.00</span>
             </div>
-            <form action="/online_checkout" method="POST" onsubmit="document.getElementById('cart_data_input').value = JSON.stringify(cart);" class="space-y-2.5 mt-3">
+            <form action="/online_checkout" method="POST" onsubmit="handleCheckoutSubmit()" class="space-y-2.5 mt-3">
                 <input type="hidden" name="cart_data" id="cart_data_input">
                 <div>
                     <label class="block text-[10px] font-bold text-slate-700 mb-1">Your Full Name:</label>
-                    <input type="text" name="customer_name" placeholder="Enter name" required class="w-full p-2.5 border border-slate-200 rounded-2xl text-xs bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition">
+                    <input type="text" id="customer_name_input" name="customer_name" placeholder="Enter name" required class="w-full p-2.5 border border-slate-200 rounded-2xl text-xs bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition">
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold text-slate-700 mb-1">WhatsApp / Phone Number:</label>
-                    <input type="text" name="customer_phone" placeholder="10-digit number" required class="w-full p-2.5 border border-slate-200 rounded-2xl text-xs bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition">
+                    <input type="tel" id="customer_phone_input" name="customer_phone" placeholder="10-digit number" required class="w-full p-2.5 border border-slate-200 rounded-2xl text-xs bg-slate-50 focus:bg-white focus:border-emerald-500 outline-none transition">
                 </div>
 
                 <!-- Delivery Location Bar -->
@@ -494,7 +798,7 @@
 
                 <div>
                     <label class="block text-[10px] font-bold text-slate-700 mb-1">Payment Method:</label>
-                    <select name="payment_mode" required class="w-full p-2.5 border border-slate-200 rounded-2xl text-xs bg-slate-50 font-semibold focus:bg-white focus:border-emerald-500 outline-none transition">
+                    <select id="payment_mode_input" name="payment_mode" required class="w-full p-2.5 border border-slate-200 rounded-2xl text-xs bg-slate-50 font-semibold focus:bg-white focus:border-emerald-500 outline-none transition">
                         <option value="Online UPI">📱 Online UPI / QR</option>
                         <option value="Cash">💵 Cash on Delivery (COD)</option>
                     </select>
@@ -506,18 +810,39 @@
         </div>
     </div>
 
-    <!-- Stylish Dynamic Floating Bottom Bar (Grey Pill) -->
-    <div id="floating-cart-bar" class="translate-y-32 opacity-0 fixed bottom-6 left-4 right-4 md:left-auto md:right-8 md:w-96 bg-zinc-800/95 backdrop-blur-md text-white p-4 shadow-2xl z-40 flex justify-between items-center rounded-3xl border border-zinc-700 transition-all duration-300 ease-in-out">
+    <!-- Floating Cart Pill (Sits cleanly above the bottom app tab bar) -->
+    <div id="floating-cart-bar" class="translate-y-36 opacity-0 pointer-events-none fixed bottom-20 md:bottom-6 left-4 right-4 md:left-auto md:right-8 md:w-96 bg-zinc-900/95 backdrop-blur-md text-white p-3.5 shadow-2xl z-40 flex justify-between items-center rounded-3xl border border-zinc-700 transition-all duration-300 ease-in-out">
         <div class="flex items-center space-x-3">
             <div class="w-10 h-10 bg-emerald-600 rounded-2xl flex items-center justify-center font-black shadow-md">🛒</div>
             <div>
                 <span id="floating-item-count" class="text-xs font-bold text-emerald-400 block leading-none">0 items</span>
-                <span id="floating-total-amt" class="text-sm font-black tracking-wide mt-0.5 block">₹0.00</span>
+                <span id="floating-total-amt" class="text-sm font-black tracking-wide mt-0.5 block tabular-nums">₹0.00</span>
             </div>
         </div>
         <button type="button" onclick="toggleCartDrawer()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl font-black text-xs shadow-md transition transform active:scale-95 tracking-wide">
             View Cart →
         </button>
     </div>
+
+    <!-- Native Android Bottom Tab Bar (Mobile Only) -->
+    <nav class="md:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-md border-t border-slate-200 z-40 px-2 py-1.5 flex justify-around items-center shadow-lg">
+        <button type="button" data-tab="shop" onclick="switchAppTab('shop')" class="app-nav-btn flex flex-col items-center justify-center py-1 px-3 text-emerald-600 font-extrabold transition">
+            <span class="text-lg leading-none">🏠</span>
+            <span class="text-[10px] mt-1">Shop</span>
+        </button>
+        <button type="button" data-tab="categories" onclick="switchAppTab('categories')" class="app-nav-btn flex flex-col items-center justify-center py-1 px-3 text-slate-400 font-semibold transition">
+            <span class="text-lg leading-none">🗂️</span>
+            <span class="text-[10px] mt-1">Categories</span>
+        </button>
+        <button type="button" data-tab="orders" onclick="switchAppTab('orders')" class="app-nav-btn flex flex-col items-center justify-center py-1 px-3 text-slate-400 font-semibold transition">
+            <span class="text-lg leading-none">📦</span>
+            <span class="text-[10px] mt-1">Orders</span>
+        </button>
+        <button type="button" onclick="toggleCartDrawer()" class="relative flex flex-col items-center justify-center py-1 px-3 text-slate-600 font-bold transition">
+            <span class="text-lg leading-none">🛒</span>
+            <span id="nav-basket-badge" class="hidden absolute top-0.5 right-1.5 bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">0</span>
+            <span class="text-[10px] mt-1">Basket</span>
+        </button>
+    </nav>
 </body>
 </html>
