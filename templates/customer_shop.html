@@ -28,6 +28,7 @@
         let wishlist = [];
         let currentCategory = 'All';
         let deferredInstallPrompt = null;
+        let toastTimer = null;
 
         try {
             const savedCart = localStorage.getItem(CART_STORAGE_KEY);
@@ -53,6 +54,21 @@
             try {
                 localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(wishlist));
             } catch (e) {}
+        }
+
+        function showAddedToast(itemName) {
+            const toast = document.getElementById('added-toast');
+            const label = document.getElementById('added-toast-text');
+            if (!toast || !label) return;
+            label.innerText = 'Added ' + itemName;
+            toast.classList.remove('opacity-0', '-translate-y-3', 'pointer-events-none');
+            toast.classList.add('opacity-100', 'translate-y-0');
+
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(function () {
+                toast.classList.add('opacity-0', '-translate-y-3', 'pointer-events-none');
+                toast.classList.remove('opacity-100', 'translate-y-0');
+            }, 1500);
         }
 
         window.addEventListener('beforeinstallprompt', function (e) {
@@ -155,7 +171,7 @@
             }
         }
 
-        function addToCart(id, name, price, gst, mrp) {
+        function addToCart(id, name, price, gst, mrp, showToastFlag) {
             const pPrice = parseFloat(price) || 0;
             const pMrp = parseFloat(mrp) || pPrice;
             if (!cart[id]) {
@@ -174,6 +190,9 @@
             }
             saveCartToStorage();
             updateUI();
+            if (showToastFlag !== false) {
+                showAddedToast(name);
+            }
         }
 
         function decrementCart(id) {
@@ -200,7 +219,7 @@
             const price = parseFloat(container.getAttribute('data-price'));
             const mrp = parseFloat(container.getAttribute('data-mrp'));
             const gst = parseFloat(container.getAttribute('data-gst'));
-            addToCart(id, name, price, gst, mrp);
+            addToCart(id, name, price, gst, mrp, true);
         }
 
         function incProdFromEl(btn) {
@@ -210,7 +229,7 @@
             const price = parseFloat(container.getAttribute('data-price'));
             const mrp = parseFloat(container.getAttribute('data-mrp'));
             const gst = parseFloat(container.getAttribute('data-gst'));
-            addToCart(id, name, price, gst, mrp);
+            addToCart(id, name, price, gst, mrp, true);
         }
 
         function selectVariant(pillBtn) {
@@ -513,7 +532,7 @@
                 incBtn.type = 'button';
                 incBtn.className = 'w-5 h-5 flex items-center justify-center font-black bg-white/15 hover:bg-white/25 active:scale-90 rounded-lg text-xs transition';
                 incBtn.innerText = '+';
-                incBtn.onclick = function () { addToCart(id, item.name, unitPrice, rate, unitMrp); };
+                incBtn.onclick = function () { addToCart(id, item.name, unitPrice, rate, unitMrp, true); };
 
                 ctrlDiv.appendChild(decBtn);
                 ctrlDiv.appendChild(qtySpan);
@@ -568,6 +587,7 @@
 
         function filterCategory(cat, btn) {
             currentCategory = cat;
+
             document.querySelectorAll('.cat-btn').forEach(function (b) {
                 const matches = b.getAttribute('data-cat') === cat;
                 b.classList.toggle('bg-gradient-to-r', matches);
@@ -580,12 +600,7 @@
                 b.classList.toggle('border-slate-200', !matches);
                 b.classList.toggle('text-slate-700', !matches);
             });
-            applyAllFilters();
-        }
 
-        function pickCategoryFromGrid(cat) {
-            switchAppTab('shop');
-            filterCategory(cat, null);
             const heading = document.getElementById('products-heading');
             if (heading) {
                 if (cat === 'All') heading.innerText = 'Explore Products';
@@ -593,6 +608,12 @@
                 else if (cat === 'Saved') heading.innerText = '❤️ Saved Essentials';
                 else heading.innerText = cat;
             }
+            applyAllFilters();
+        }
+
+        function pickCategoryFromGrid(cat) {
+            switchAppTab('shop');
+            filterCategory(cat, null);
         }
 
         function searchProducts() {
@@ -660,11 +681,17 @@
     </script>
 </head>
 <body class="bg-stone-50 font-sans pb-36 md:pb-16 text-slate-900 select-none">
+    <!-- Subtle Top Toast Pill when Adding Items -->
+    <div id="added-toast" class="opacity-0 -translate-y-3 pointer-events-none fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-zinc-900 text-white px-4 py-2 rounded-full shadow-xl border border-emerald-500/40 flex items-center gap-2 text-xs font-extrabold transition-all duration-200">
+        <span class="w-4 h-4 rounded-full bg-emerald-500 text-zinc-950 flex items-center justify-center text-[10px] font-black">✓</span>
+        <span id="added-toast-text" class="truncate max-w-[220px]">Added to basket</span>
+    </div>
+
     <!-- Top Navbar -->
     <header class="bg-white/95 backdrop-blur-md shadow-2xs sticky top-0 z-40 px-4 md:px-8 py-3 flex flex-col md:flex-row justify-between items-center border-b border-slate-200/80 gap-2.5">
         <div class="flex justify-between items-center w-full md:w-auto">
             <div class="flex items-center gap-2">
-                <a href="/" onclick="switchAppTab('shop'); return false;" class="text-xl md:text-2xl font-black italic tracking-tighter text-amber-500">Swaraj Grocery's</a>
+                <a href="/" onclick="pickCategoryFromGrid('All'); return false;" class="text-xl md:text-2xl font-black italic tracking-tighter text-amber-500">Swaraj Grocery's</a>
                 <span class="bg-amber-50 text-amber-700 border border-amber-200/80 text-[10px] font-extrabold px-2 py-0.5 rounded-full">⚡ Katol</span>
             </div>
             <div onclick="toggleCartDrawer()" class="hidden md:flex flex-col border-l pl-4 border-slate-200 cursor-pointer">
@@ -742,7 +769,7 @@
                 {% set v0 = group.variants[0] %}
                 {% set pct0 = ((v0.savings / v0.mrp) * 100)|round(0)|int if v0.savings > 0 and v0.mrp > 0 else 0 %}
                 {% set wish_key = (group.name ~ '|' ~ group.category) | e %}
-                <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-2xs hover:shadow-md hover:border-emerald-300/90 transition duration-200"
+                <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-2xs hover:shadow-md hover:-translate-y-0.5 hover:border-emerald-300/90 transition duration-200"
                      data-index="{{ loop.index0 }}"
                      data-category="{{ group.category }}"
                      data-name="{{ group.name }}"
