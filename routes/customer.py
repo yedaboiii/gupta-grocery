@@ -86,6 +86,7 @@ def _ensure_storefront_columns(cursor, conn):
       "ALTER TABLE products ADD COLUMN mrp REAL DEFAULT 0.0",
       "ALTER TABLE products ADD COLUMN is_online INTEGER DEFAULT 1",
       "ALTER TABLE products ADD COLUMN is_active INTEGER DEFAULT 1",
+      "ALTER TABLE products ADD COLUMN is_best_deal INTEGER DEFAULT 0",
       "ALTER TABLE products ADD COLUMN base_product_id INTEGER DEFAULT NULL",
       "ALTER TABLE products ADD COLUMN weight_kg REAL DEFAULT 1.0",
       "ALTER TABLE bills ADD COLUMN delivery_address TEXT DEFAULT ''",
@@ -101,6 +102,9 @@ def _ensure_storefront_columns(cursor, conn):
   try:
     cursor.execute(
         "UPDATE products SET mrp = price WHERE mrp IS NULL OR mrp <= 0"
+    )
+    cursor.execute(
+        "UPDATE products SET is_best_deal = CASE WHEN COALESCE(mrp, 0) > COALESCE(price, 0) THEN 1 ELSE 0 END WHERE is_best_deal IS NULL"
     )
     cursor.execute(
         "UPDATE products SET weight_kg = 1.0 WHERE weight_kg IS NULL OR weight_kg <= 0"
@@ -175,7 +179,8 @@ def customer_shop():
 
   cursor.execute(
       "SELECT id, barcode, name, pack_size, mrp, price, stock, gst_rate,"
-      " batch_no, expiry_date, rack_location, category, image_url"
+      " batch_no, expiry_date, rack_location, category, image_url,"
+      " COALESCE(is_best_deal, 0) AS is_best_deal"
       " FROM products"
       " WHERE stock > 0"
       " AND COALESCE(is_active, 1) = 1"
@@ -193,6 +198,8 @@ def customer_shop():
     pack_size = (p["pack_size"] or "").strip()
     mrp_val = float(p["mrp"] or p["price"] or 0.0)
     sell_val = float(p["price"] or 0.0)
+    savings_val = max(0.0, round(mrp_val - sell_val, 2))
+    is_deal = bool(int(p["is_best_deal"] or 0) == 1 or savings_val > 0)
     display_name = f"{base_name} ({pack_size})" if pack_size else base_name
 
     variant_info = {
@@ -203,7 +210,8 @@ def customer_shop():
         "has_pack": bool(pack_size),
         "mrp": mrp_val,
         "price": sell_val,
-        "savings": max(0.0, round(mrp_val - sell_val, 2)),
+        "savings": savings_val,
+        "is_best_deal": is_deal,
         "stock": int(p["stock"] or 0),
         "gst": float(p["gst_rate"] if p["gst_rate"] is not None else 5.0),
         "category": p["category"] or "Essentials",
@@ -216,12 +224,15 @@ def customer_shop():
           "name": base_name,
           "category": variant_info["category"],
           "image_url": variant_info["image_url"],
+          "is_best_deal": is_deal,
           "variants": [variant_info],
       }
       grouped_map[group_key] = group_entry
       grouped_products.append(group_entry)
     else:
       grouped_map[group_key]["variants"].append(variant_info)
+      if is_deal:
+        grouped_map[group_key]["is_best_deal"] = True
       if not grouped_map[group_key]["image_url"] and variant_info["image_url"]:
         grouped_map[group_key]["image_url"] = variant_info["image_url"]
 

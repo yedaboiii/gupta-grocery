@@ -154,6 +154,7 @@ def _ensure_item_master_columns(cursor, conn):
         "ALTER TABLE products ADD COLUMN reorder_level INTEGER DEFAULT 15",
         "ALTER TABLE products ADD COLUMN is_online INTEGER DEFAULT 1",
         "ALTER TABLE products ADD COLUMN is_active INTEGER DEFAULT 1",
+        "ALTER TABLE products ADD COLUMN is_best_deal INTEGER DEFAULT 0",
         "ALTER TABLE products ADD COLUMN image_url TEXT DEFAULT ''",
         "ALTER TABLE products ADD COLUMN base_product_id INTEGER DEFAULT NULL",
         "ALTER TABLE products ADD COLUMN weight_kg REAL DEFAULT 1.0"
@@ -172,6 +173,7 @@ def _ensure_item_master_columns(cursor, conn):
         cursor.execute("UPDATE products SET reorder_level = 15 WHERE reorder_level IS NULL")
         cursor.execute("UPDATE products SET is_online = 1 WHERE is_online IS NULL")
         cursor.execute("UPDATE products SET is_active = 1 WHERE is_active IS NULL")
+        cursor.execute("UPDATE products SET is_best_deal = CASE WHEN COALESCE(mrp, 0) > COALESCE(price, 0) THEN 1 ELSE 0 END WHERE is_best_deal IS NULL")
         cursor.execute("UPDATE products SET weight_kg = 1.0 WHERE weight_kg IS NULL OR weight_kg <= 0")
         cursor.execute("UPDATE products SET sku_code = 'SG-' || PRINTF('%04d', id) WHERE sku_code IS NULL OR TRIM(sku_code) = ''")
         conn.commit()
@@ -182,17 +184,18 @@ def _sync_linked_weight_variants(cursor, base_id):
     if not base_id:
         return
     cursor.execute(
-        "SELECT price, mrp, cost_price, stock, gst_rate, hsn_code, supplier_name, image_url FROM products WHERE id = ?",
+        "SELECT price, mrp, cost_price, stock, gst_rate, hsn_code, supplier_name, image_url, COALESCE(is_best_deal, 0) FROM products WHERE id = ?",
         (base_id,)
     )
     base = cursor.fetchone()
     if not base:
         return
-    b_price, b_mrp, b_cost, b_stock, b_gst, b_hsn, b_sup, b_img = base
+    b_price, b_mrp, b_cost, b_stock, b_gst, b_hsn, b_sup, b_img, b_deal = base
     b_price = float(b_price or 0.0)
     b_mrp = float(b_mrp or b_price)
     b_cost = float(b_cost or 0.0)
     b_stock = float(b_stock or 0.0)
+    b_deal_flag = 1 if (int(b_deal or 0) == 1 or b_mrp > b_price) else 0
 
     cursor.execute("SELECT id, COALESCE(weight_kg, 1.0) FROM products WHERE base_product_id = ?", (base_id,))
     variants = cursor.fetchall()
@@ -204,12 +207,14 @@ def _sync_linked_weight_variants(cursor, base_id):
         v_mrp = round(b_mrp * mult, 2)
         v_cost = round(b_cost * mult, 2)
         v_stock = int(b_stock // mult)
+        v_deal = 1 if (b_deal_flag == 1 or v_mrp > v_price) else 0
         cursor.execute("""
             UPDATE products
             SET price = ?, mrp = ?, cost_price = ?, stock = ?, gst_rate = ?,
-                hsn_code = ?, supplier_name = ?, image_url = COALESCE(NULLIF(?, ''), image_url)
+                hsn_code = ?, supplier_name = ?, is_best_deal = ?,
+                image_url = COALESCE(NULLIF(?, ''), image_url)
             WHERE id = ?
-        """, (v_price, v_mrp, v_cost, v_stock, b_gst, b_hsn, b_sup, b_img or "", v_id))
+        """, (v_price, v_mrp, v_cost, v_stock, b_gst, b_hsn, b_sup, v_deal, b_img or "", v_id))
 
 @admin_bp.route("/admin_login", methods=["GET", "POST"])
 def admin_login():
@@ -360,6 +365,7 @@ def item_master():
                 image_url = (request.form.get("image_url") or "").strip()
                 is_online = 1 if request.form.get("is_online") == "1" else 0
                 is_active = 1 if request.form.get("is_active") == "1" else 0
+                deal_requested = request.form.get("is_best_deal") in ("1", "on", "true", "True")
 
                 if base_product_id:
                     cursor.execute(
@@ -388,19 +394,21 @@ def item_master():
                 if mrp <= 0:
                     mrp = price
 
+                is_best_deal = 1 if (deal_requested or mrp > price) else 0
+
                 cursor.execute("""
                     INSERT INTO products (
                         barcode, sku_code, name, brand, pack_size, supplier_name,
                         category, unit, mrp, price, cost_price, gst_rate, hsn_code,
                         stock, reorder_level, batch_no, expiry_date, rack_location,
-                        image_url, is_online, is_active, base_product_id, weight_kg
+                        image_url, is_online, is_active, is_best_deal, base_product_id, weight_kg
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     barcode, sku_code, name, brand, pack_size, supplier_name,
                     category, unit, mrp, price, cost_price, gst_rate, hsn_code,
                     stock, reorder_level, batch_no, expiry_date, rack_location,
-                    image_url, is_online, is_active, base_product_id, weight_kg
+                    image_url, is_online, is_active, is_best_deal, base_product_id, weight_kg
                 ))
                 new_id = cursor.lastrowid
                 if not sku_code:
@@ -437,6 +445,7 @@ def item_master():
                 image_url = (request.form.get("image_url") or "").strip()
                 is_online = 1 if request.form.get("is_online") == "1" else 0
                 is_active = 1 if request.form.get("is_active") == "1" else 0
+                deal_requested = request.form.get("is_best_deal") in ("1", "on", "true", "True")
 
                 if base_product_id:
                     cursor.execute(
@@ -457,18 +466,20 @@ def item_master():
                 if mrp <= 0:
                     mrp = price
 
+                is_best_deal = 1 if (deal_requested or mrp > price) else 0
+
                 cursor.execute("""
                     UPDATE products
                     SET barcode = ?, sku_code = ?, name = ?, brand = ?, pack_size = ?, supplier_name = ?,
                         category = ?, unit = ?, mrp = ?, price = ?, cost_price = ?, gst_rate = ?, hsn_code = ?,
                         stock = ?, reorder_level = ?, batch_no = ?, expiry_date = ?, rack_location = ?,
-                        image_url = ?, is_online = ?, is_active = ?, base_product_id = ?, weight_kg = ?
+                        image_url = ?, is_online = ?, is_active = ?, is_best_deal = ?, base_product_id = ?, weight_kg = ?
                     WHERE id = ?
                 """, (
                     barcode, sku_code, name, brand, pack_size, supplier_name,
                     category, unit, mrp, price, cost_price, gst_rate, hsn_code,
                     stock, reorder_level, batch_no, expiry_date, rack_location,
-                    image_url, is_online, is_active, base_product_id, weight_kg, prod_id
+                    image_url, is_online, is_active, is_best_deal, base_product_id, weight_kg, prod_id
                 ))
 
                 _sync_linked_weight_variants(cursor, prod_id)
@@ -540,6 +551,7 @@ def item_master():
         d["reorder_level"] = int(d.get("reorder_level") if d.get("reorder_level") is not None else 15)
         d["is_online"] = int(d.get("is_online") if d.get("is_online") is not None else 1)
         d["is_active"] = int(d.get("is_active") if d.get("is_active") is not None else 1)
+        d["is_best_deal"] = int(d.get("is_best_deal") if d.get("is_best_deal") is not None else (1 if mrp > price else 0))
         d["image_url"] = d.get("image_url") or ""
         d["base_product_id"] = d.get("base_product_id")
         d["weight_kg"] = float(d.get("weight_kg") or 1.0)
@@ -555,15 +567,15 @@ def item_master():
 @admin_bp.route("/item_master/toggle/<int:prod_id>/<string:field>")
 @admin_required
 def toggle_item_master_flag(prod_id, field):
-    if field not in ("is_online", "is_active"):
+    if field not in ("is_online", "is_active", "is_best_deal"):
         return redirect(url_for("admin.item_master"))
     conn = sqlite3.connect("store_pos.db")
     cursor = conn.cursor()
     _ensure_item_master_columns(cursor, conn)
-    cursor.execute(f"UPDATE products SET {field} = CASE WHEN COALESCE({field}, 1) = 1 THEN 0 ELSE 1 END WHERE id = ?", (prod_id,))
+    cursor.execute(f"UPDATE products SET {field} = CASE WHEN COALESCE({field}, 0) = 1 THEN 0 ELSE 1 END WHERE id = ?", (prod_id,))
     conn.commit()
     conn.close()
-    flash("Updated item visibility/status!")
+    flash("Updated item visibility/deal status!")
     return redirect(url_for("admin.item_master"))
 
 @admin_bp.route("/item_master/export_csv")
@@ -583,7 +595,7 @@ def export_item_master_csv():
         "id", "sku_code", "barcode", "name", "brand", "pack_size", "supplier_name",
         "category", "unit", "mrp", "price", "cost_price", "gst_rate", "hsn_code",
         "stock", "reorder_level", "batch_no", "expiry_date", "rack_location",
-        "is_online", "is_active", "image_url", "base_product_id", "weight_kg"
+        "is_online", "is_active", "is_best_deal", "image_url", "base_product_id", "weight_kg"
     ]
     writer.writerow(headers)
     for r in rows:
@@ -637,6 +649,8 @@ def import_item_master_csv():
             rack_location = (row.get("rack_location") or "Rack-1 Shelf A").strip()
             is_online = int(float(row.get("is_online") if row.get("is_online") not in (None, "") else 1))
             is_active = int(float(row.get("is_active") if row.get("is_active") not in (None, "") else 1))
+            raw_deal = (row.get("is_best_deal") or "").strip()
+            is_best_deal = int(float(raw_deal)) if raw_deal != "" else (1 if mrp > price else 0)
             image_url = (row.get("image_url") or "").strip()
             raw_base = (row.get("base_product_id") or "").strip()
             base_product_id = int(float(raw_base)) if raw_base else None
@@ -657,7 +671,8 @@ def import_item_master_csv():
                         category = ?, unit = ?, mrp = ?, price = ?, cost_price = ?,
                         gst_rate = ?, hsn_code = ?, stock = ?, reorder_level = ?,
                         batch_no = ?, expiry_date = ?, rack_location = ?,
-                        is_online = ?, is_active = ?, image_url = COALESCE(NULLIF(?, ''), image_url),
+                        is_online = ?, is_active = ?, is_best_deal = ?,
+                        image_url = COALESCE(NULLIF(?, ''), image_url),
                         base_product_id = ?, weight_kg = ?
                     WHERE id = ?
                 """, (
@@ -665,7 +680,7 @@ def import_item_master_csv():
                     category, unit, mrp, price, cost_price,
                     gst_rate, hsn_code, stock, reorder_level,
                     batch_no, expiry_date, rack_location,
-                    is_online, is_active, image_url, base_product_id, weight_kg, existing[0]
+                    is_online, is_active, is_best_deal, image_url, base_product_id, weight_kg, existing[0]
                 ))
                 updated_count += 1
             else:
@@ -674,14 +689,14 @@ def import_item_master_csv():
                         barcode, sku_code, name, brand, pack_size, supplier_name,
                         category, unit, mrp, price, cost_price, gst_rate, hsn_code,
                         stock, reorder_level, batch_no, expiry_date, rack_location,
-                        is_online, is_active, image_url, base_product_id, weight_kg
+                        is_online, is_active, is_best_deal, image_url, base_product_id, weight_kg
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     barcode, sku_code, name, brand, pack_size, supplier_name,
                     category, unit, mrp, price, cost_price, gst_rate, hsn_code,
                     stock, reorder_level, batch_no, expiry_date, rack_location,
-                    is_online, is_active, image_url, base_product_id, weight_kg
+                    is_online, is_active, is_best_deal, image_url, base_product_id, weight_kg
                 ))
                 new_id = cursor.lastrowid
                 if not sku_code:
