@@ -248,12 +248,14 @@
             const price = parseFloat(pillBtn.getAttribute('data-price')) || 0;
             const mrp = parseFloat(pillBtn.getAttribute('data-mrp')) || price;
             const savings = parseFloat(pillBtn.getAttribute('data-savings')) || 0;
+            const bestDealFlag = pillBtn.getAttribute('data-best-deal') === '1' || savings > 0;
             const stock = parseInt(pillBtn.getAttribute('data-stock') || '0');
             const gst = pillBtn.getAttribute('data-gst') || '5';
             const imgUrl = pillBtn.getAttribute('data-image') || '';
 
             card.setAttribute('data-price', price.toFixed(2));
             card.setAttribute('data-savings', savings.toFixed(2));
+            card.setAttribute('data-best-deal', bestDealFlag ? '1' : '0');
 
             const stockEl = card.querySelector('.card-stock');
             if (stockEl) {
@@ -283,6 +285,9 @@
                     const pct = Math.round((savings / mrp) * 100);
                     saveBadge.innerText = pct > 0 ? (pct + '% OFF • Save ₹' + Math.round(savings)) : ('Save ₹' + Math.round(savings));
                     saveBadge.classList.remove('hidden');
+                } else if (bestDealFlag) {
+                    saveBadge.innerText = '🔥 BEST DEAL';
+                    saveBadge.classList.remove('hidden');
                 } else {
                     saveBadge.classList.add('hidden');
                 }
@@ -303,6 +308,9 @@
             }
 
             updateUI();
+            if (currentCategory === 'Deals') {
+                applyAllFilters();
+            }
         }
 
         function toggleCartDrawer() {
@@ -650,11 +658,12 @@
                 const cat = card.getAttribute('data-category') || '';
                 const wishKey = card.getAttribute('data-wish-key') || '';
                 const savings = parseFloat(card.getAttribute('data-savings') || '0');
+                const isDeal = card.getAttribute('data-best-deal') === '1' || savings > 0;
 
                 const matchesSearch = !query || name.includes(query) || cat.toLowerCase().includes(query);
                 const matchesCat =
                     currentCategory === 'All' ||
-                    (currentCategory === 'Deals' && savings > 0) ||
+                    (currentCategory === 'Deals' && isDeal) ||
                     (currentCategory === 'Saved' && wishlist.indexOf(wishKey) >= 0) ||
                     cat === currentCategory;
 
@@ -768,6 +777,7 @@
                 {% for group in grouped_products %}
                 {% set v0 = group.variants[0] %}
                 {% set pct0 = ((v0.savings / v0.mrp) * 100)|round(0)|int if v0.savings > 0 and v0.mrp > 0 else 0 %}
+                {% set has_deal0 = (group.is_best_deal or v0.is_best_deal or v0.savings > 0) %}
                 {% set wish_key = (group.name ~ '|' ~ group.category) | e %}
                 <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-2xs hover:shadow-md hover:-translate-y-0.5 hover:border-emerald-300/90 transition duration-200"
                      data-index="{{ loop.index0 }}"
@@ -775,7 +785,8 @@
                      data-name="{{ group.name }}"
                      data-wish-key="{{ wish_key }}"
                      data-price="{{ '%.2f'|format(v0.price) }}"
-                     data-savings="{{ '%.2f'|format(v0.savings) }}">
+                     data-savings="{{ '%.2f'|format(v0.savings) }}"
+                     data-best-deal="{{ '1' if has_deal0 else '0' }}">
                     <div>
                         <div class="h-32 md:h-36 bg-gradient-to-b from-stone-50 to-slate-50/80 rounded-2xl mb-3 overflow-hidden flex items-center justify-center border border-slate-100 p-2.5 relative">
                             {% if group.image_url %}
@@ -783,8 +794,8 @@
                             {% else %}
                             <span class="text-3xl">📦</span>
                             {% endif %}
-                            <span class="card-save-badge {% if v0.savings <= 0 %}hidden{% endif %} absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs">
-                                {% if pct0 > 0 %}{{ pct0 }}% OFF • {% endif %}Save ₹{{ "%.0f"|format(v0.savings) }}
+                            <span class="card-save-badge {% if not has_deal0 %}hidden{% endif %} absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs">
+                                {% if v0.savings > 0 %}{% if pct0 > 0 %}{{ pct0 }}% OFF • {% endif %}Save ₹{{ "%.0f"|format(v0.savings) }}{% else %}🔥 BEST DEAL{% endif %}
                             </span>
                             <button type="button"
                                     data-wish-key="{{ wish_key }}"
@@ -807,6 +818,7 @@
                                     data-price="{{ '%.2f'|format(v.price) }}"
                                     data-mrp="{{ '%.2f'|format(v.mrp) }}"
                                     data-savings="{{ '%.2f'|format(v.savings) }}"
+                                    data-best-deal="{{ '1' if (v.is_best_deal or v.savings > 0) else '0' }}"
                                     data-stock="{{ v.stock }}"
                                     data-gst="{{ v.gst }}"
                                     data-image="{{ v.image_url }}"
