@@ -179,10 +179,10 @@
 
                 if (cart[prodId]) {
                     container.innerHTML =
-                        '<div class="flex items-center justify-between bg-emerald-600 text-white rounded-xl px-3 py-2 shadow-lg w-full transform scale-105 transition-all">' +
-                        '<button type="button" onclick="decrementCart(\'' + prodId + '\')" class="px-2 font-black hover:bg-emerald-700 rounded-lg text-sm">-</button>' +
-                        '<span class="font-black text-xs">' + cart[prodId].qty + '</span>' +
-                        '<button type="button" onclick="incProdFromEl(this)" class="px-2 font-black hover:bg-emerald-700 rounded-lg text-sm">+</button>' +
+                        '<div class="flex items-center justify-between bg-emerald-600 text-white rounded-xl px-1.5 py-1.5 shadow-md w-full transition-all">' +
+                        '<button type="button" onclick="decrementCart(\'' + prodId + '\')" class="w-6 h-6 flex items-center justify-center font-black hover:bg-emerald-700 rounded-lg text-sm leading-none">-</button>' +
+                        '<span class="font-black text-xs px-1 tabular-nums">' + cart[prodId].qty + '</span>' +
+                        '<button type="button" onclick="incProdFromEl(this)" class="w-6 h-6 flex items-center justify-center font-black hover:bg-emerald-700 rounded-lg text-sm leading-none">+</button>' +
                         '</div>';
                 } else {
                     container.innerHTML =
@@ -404,14 +404,14 @@
                         <p class="card-stock text-[10px] text-slate-400 mt-1 font-medium">Stock: {{ v0.stock }}</p>
                     </div>
 
-                    <div class="mt-4 flex items-center justify-between pt-2 border-t border-slate-100">
-                        <div>
-                            <span class="card-mrp text-[10px] text-slate-400 {% if v0.mrp > v0.price %}line-through{% endif %} block leading-none font-medium">
+                    <div class="mt-4 flex items-end justify-between gap-2 pt-2 border-t border-slate-100">
+                        <div class="min-w-0">
+                            <span class="card-mrp text-[10px] text-slate-400 {% if v0.mrp > v0.price %}line-through{% endif %} block leading-none font-medium truncate">
                                 {% if v0.mrp > v0.price %}MRP ₹{{ "%.2f"|format(v0.mrp) }}{% else %}Price{% endif %}
                             </span>
-                            <span class="card-price text-emerald-700 font-black text-sm">₹{{ "%.2f"|format(v0.price) }}</span>
+                            <span class="card-price text-emerald-700 font-black text-xs sm:text-sm whitespace-nowrap tabular-nums block mt-0.5">₹{{ "%.2f"|format(v0.price) }}</span>
                         </div>
-                        <div class="w-24 product-action-container"
+                        <div class="w-20 sm:w-24 shrink-0 product-action-container"
                              data-id="{{ v0.id }}"
                              data-name="{{ v0.display_name | e }}"
                              data-price="{{ '%.2f'|format(v0.price) }}"
