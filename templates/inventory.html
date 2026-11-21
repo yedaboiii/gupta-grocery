@@ -19,12 +19,60 @@
             return isNaN(dt.getTime()) ? "" : DAY_NAMES[dt.getDay()];
         }
 
+        function formatQtyNumber(val) {
+            const num = Number(val || 0);
+            if (Math.abs(num % 1) < 1e-6) return String(Math.round(num));
+            return num.toFixed(2).replace(/\.?0+$/, "");
+        }
+
         function filterInventoryTable() {
             const q = (document.getElementById('inv_search')?.value || '').toLowerCase().trim();
             document.querySelectorAll('#inventory-tbody tr.inv-row').forEach(function (row) {
                 const text = row.innerText.toLowerCase();
                 row.style.display = (!q || text.includes(q)) ? '' : 'none';
             });
+        }
+
+        function updatePeriodStockSummary(matchingRows, prodFilter, dateFilter, monthFilter) {
+            const banner = document.getElementById('period_stock_banner');
+            if (!banner) return;
+
+            if (!prodFilter || (!dateFilter && !monthFilter) || matchingRows.length === 0) {
+                banner.classList.add('hidden');
+                return;
+            }
+
+            // Rows are ordered newest first (id DESC), so chronological order is reversed
+            const chronoRows = matchingRows.slice().reverse();
+            const firstRow = chronoRows[0];
+            const lastRow = chronoRows[chronoRows.length - 1];
+
+            const firstQty = parseFloat(firstRow.getAttribute('data-qty') || '0') || 0;
+            const firstAfterRaw = firstRow.getAttribute('data-stock-after');
+            const firstAfter = (firstAfterRaw !== null && firstAfterRaw !== '') ? parseFloat(firstAfterRaw) : null;
+
+            const lastAfterRaw = lastRow.getAttribute('data-stock-after');
+            const lastAfter = (lastAfterRaw !== null && lastAfterRaw !== '') ? parseFloat(lastAfterRaw) : null;
+
+            let totalSold = 0;
+            let totalPurchased = 0;
+            chronoRows.forEach(function (r) {
+                const mtype = (r.getAttribute('data-type') || '').toUpperCase();
+                const q = Math.abs(parseFloat(r.getAttribute('data-qty') || '0') || 0);
+                if (mtype === 'SOLD') totalSold += q;
+                else if (mtype === 'PURCHASED') totalPurchased += q;
+            });
+
+            const openingStock = (firstAfter !== null && !isNaN(firstAfter)) ? (firstAfter - firstQty) : null;
+            const closingStock = (lastAfter !== null && !isNaN(lastAfter)) ? lastAfter : null;
+
+            document.getElementById('ps_product_label').innerText = firstRow.getAttribute('data-product') || prodFilter;
+            document.getElementById('ps_period_label').innerText = dateFilter || monthFilter;
+            document.getElementById('ps_opening').innerText = openingStock !== null ? formatQtyNumber(openingStock) : '-';
+            document.getElementById('ps_purchased').innerText = "+" + formatQtyNumber(totalPurchased);
+            document.getElementById('ps_sold').innerText = "-" + formatQtyNumber(totalSold);
+            document.getElementById('ps_closing').innerText = closingStock !== null ? formatQtyNumber(closingStock) : '-';
+            banner.classList.remove('hidden');
         }
 
         function filterTrackList() {
@@ -36,6 +84,9 @@
             const searchQ = (document.getElementById('track_search')?.value || '').toLowerCase().trim();
 
             let visibleCount = 0;
+            let soldQtySum = 0;
+            let purchasedQtySum = 0;
+            const matchingRows = [];
 
             document.querySelectorAll('#track-tbody tr.track-row').forEach(function (row) {
                 const rowProd = (row.getAttribute('data-product') || '').toLowerCase();
@@ -54,11 +105,73 @@
 
                 const show = matchProd && matchType && matchDay && matchDate && matchMonth && matchSearch;
                 row.style.display = show ? '' : 'none';
-                if (show) visibleCount++;
+
+                if (show) {
+                    visibleCount++;
+                    matchingRows.push(row);
+                    const absQty = Math.abs(parseFloat(row.getAttribute('data-qty') || '0') || 0);
+                    if (rowType === 'SOLD') soldQtySum += absQty;
+                    else if (rowType === 'PURCHASED') purchasedQtySum += absQty;
+                }
             });
 
             const countBadge = document.getElementById('track_visible_count');
             if (countBadge) countBadge.innerText = visibleCount + " entries";
+
+            const soldEl = document.getElementById('kpi_sold_qty');
+            const purchEl = document.getElementById('kpi_purchased_qty');
+            const netEl = document.getElementById('kpi_net_qty');
+
+            if (soldEl) soldEl.innerText = formatQtyNumber(soldQtySum);
+            if (purchEl) purchEl.innerText = formatQtyNumber(purchasedQtySum);
+            if (netEl) {
+                const netVal = purchasedQtySum - soldQtySum;
+                netEl.innerText = (netVal > 0 ? "+" : "") + formatQtyNumber(netVal);
+            }
+
+            updatePeriodStockSummary(matchingRows, prodFilter, dateFilter, monthFilter);
+        }
+
+        function exportFilteredTrackCSV() {
+            const rows = [];
+            const headers = [
+                "Day", "Date (IST)", "Nagpur Timestamp", "Item Code",
+                "Product", "Unit (UoM)", "Movement Type", "Qty Change",
+                "Stock After", "Source / Ref"
+            ];
+            rows.push(headers.map(h => '"' + h.replace(/"/g, '""') + '"').join(","));
+
+            document.querySelectorAll('#track-tbody tr.track-row').forEach(function (row) {
+                if (row.style.display === 'none') return;
+                const cells = row.querySelectorAll('td');
+                if (cells.length < 10) return;
+
+                const values = [
+                    cells[0].innerText.trim(),
+                    cells[1].innerText.trim(),
+                    cells[2].innerText.trim(),
+                    cells[3].innerText.trim(),
+                    cells[4].innerText.trim(),
+                    cells[5].innerText.trim(),
+                    cells[6].innerText.trim(),
+                    cells[7].innerText.trim(),
+                    cells[8].innerText.trim(),
+                    cells[9].innerText.trim()
+                ];
+                rows.push(values.map(v => '"' + v.replace(/"/g, '""') + '"').join(","));
+            });
+
+            const csvContent = "\uFEFF" + rows.join("\r\n");
+            const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            const dateTag = document.getElementById('track_date_filter')?.value || document.getElementById('track_month_filter')?.value || "All";
+            link.setAttribute("href", url);
+            link.setAttribute("download", "Swaraj_Grocery_Track_List_" + dateTag + ".csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
         }
 
         function resetTrackFilters() {
@@ -94,6 +207,15 @@
 </head>
 <body class="bg-slate-100 font-sans p-4 md:p-6">
     {{ admin_navbar | safe }}
+    {% set ns = namespace(catalog_sell_val=0.0, catalog_cost_val=0.0) %}
+    {% for p in products %}
+        {% set pprice = (p['price'] if p['price'] is defined else p[3])|float %}
+        {% set pstock = (p['stock'] if p['stock'] is defined else p[4])|float %}
+        {% set pcost = (p['cost_price'] if (p['cost_price'] is defined and p['cost_price']) else 0.0)|float %}
+        {% set ns.catalog_sell_val = ns.catalog_sell_val + (pprice * pstock) %}
+        {% set ns.catalog_cost_val = ns.catalog_cost_val + (pcost * pstock) %}
+    {% endfor %}
+
     <div class="max-w-7xl mx-auto space-y-6">
         <!-- Product Catalog Card -->
         <div class="bg-white p-4 md:p-6 rounded-2xl shadow-md border border-slate-200">
@@ -168,9 +290,34 @@
                     <h2 class="text-lg font-bold text-slate-900">🕒 Server Product Track List (Sold &amp; Purchased)</h2>
                     <p class="text-xs text-slate-500">Every sale and purchase registered on the server with Nagpur IST date &amp; timestamp.</p>
                 </div>
-                <span id="track_visible_count" class="text-xs font-bold bg-blue-50 text-blue-800 px-3 py-1 rounded-full border border-blue-200 self-start sm:self-auto">
-                    {{ (tracks or [])|length }} entries
-                </span>
+                <div class="flex items-center gap-2 self-start sm:self-auto">
+                    <span id="track_visible_count" class="text-xs font-bold bg-blue-50 text-blue-800 px-3 py-1 rounded-full border border-blue-200">
+                        {{ (tracks or [])|length }} entries
+                    </span>
+                    <button type="button" onclick="exportFilteredTrackCSV()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm transition">
+                        📥 Export Track CSV
+                    </button>
+                </div>
+            </div>
+
+            <!-- Live Filtered KPI Cards -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div class="bg-rose-50 border border-rose-200 rounded-xl p-3">
+                    <div class="text-[10px] font-extrabold uppercase text-rose-700">Filtered Sold Qty</div>
+                    <div id="kpi_sold_qty" class="text-lg font-black text-rose-800 font-mono mt-0.5">0</div>
+                </div>
+                <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                    <div class="text-[10px] font-extrabold uppercase text-emerald-700">Filtered Purchased Qty</div>
+                    <div id="kpi_purchased_qty" class="text-lg font-black text-emerald-800 font-mono mt-0.5">0</div>
+                </div>
+                <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
+                    <div class="text-[10px] font-extrabold uppercase text-indigo-700">Net Movement (Purch − Sold)</div>
+                    <div id="kpi_net_qty" class="text-lg font-black text-indigo-800 font-mono mt-0.5">0</div>
+                </div>
+                <div class="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                    <div class="text-[10px] font-extrabold uppercase text-blue-700">Catalog Stock Value (Retail)</div>
+                    <div class="text-lg font-black text-blue-900 font-mono mt-0.5">₹{{ '%.2f'|format(ns.catalog_sell_val) }}</div>
+                </div>
             </div>
 
             <!-- Day, Date, Month, Product, Type & Search Filters -->
@@ -234,6 +381,22 @@
                 </div>
             </div>
 
+            <!-- Opening vs Closing Stock Banner (Shown when Product + Date/Month is selected) -->
+            <div id="period_stock_banner" class="hidden mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs">
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                        <span class="font-extrabold text-amber-950" id="ps_product_label"></span>
+                        <span class="text-amber-700 font-semibold ml-1">(<span id="ps_period_label"></span>)</span>
+                    </div>
+                    <div class="flex flex-wrap gap-4 font-mono font-bold">
+                        <span class="text-slate-700">Opening: <span id="ps_opening" class="text-slate-900">-</span></span>
+                        <span class="text-emerald-700">Purchased: <span id="ps_purchased">+0</span></span>
+                        <span class="text-rose-700">Sold: <span id="ps_sold">-0</span></span>
+                        <span class="text-blue-900">Closing: <span id="ps_closing">-</span></span>
+                    </div>
+                </div>
+            </div>
+
             <div class="overflow-x-auto">
                 <table class="w-full border-collapse border border-slate-200 text-xs">
                     <thead>
@@ -256,6 +419,7 @@
                         {% set t_pname = (t['product_name'] if t['product_name'] is defined else t[3]) or '' %}
                         {% set mtype = (t['movement_type'] if t['movement_type'] is defined else t[5])|upper %}
                         {% set qty_val = (t['qty_change'] if t['qty_change'] is defined else t[6])|float %}
+                        {% set sa = t['stock_after'] if t['stock_after'] is defined else t[7] %}
                         {% set tdate = t['track_date'] if t['track_date'] is defined else t[10] %}
                         {% set meta = prod_meta.get(t_pname|lower, {}) %}
                         {% set t_code = (t['item_code'] if (t['item_code'] is defined and t['item_code']) else (meta.get('code') or ('SG-%04d'|format(t_pid|int) if t_pid else '-'))) %}
@@ -263,7 +427,9 @@
                         <tr class="track-row hover:bg-slate-50"
                             data-product="{{ t_pname | e }}"
                             data-type="{{ mtype }}"
-                            data-date="{{ tdate }}">
+                            data-date="{{ tdate }}"
+                            data-qty="{{ qty_val }}"
+                            data-stock-after="{{ sa if sa is not none else '' }}">
                             <td class="track-day-cell p-2.5 border font-semibold text-indigo-700">-</td>
                             <td class="p-2.5 border font-mono font-semibold text-slate-700">{{ tdate }}</td>
                             <td class="p-2.5 border font-mono text-blue-900 font-bold">{{ t['ist_timestamp'] if t['ist_timestamp'] is defined else t[11] }}</td>
@@ -281,7 +447,6 @@
                                 {{ '%+.2f'|format(qty_val) if (qty_val % 1 != 0) else '%+d'|format(qty_val|int) }} {{ t_uom }}
                             </td>
                             <td class="p-2.5 border text-right font-mono text-slate-700">
-                                {% set sa = t['stock_after'] if t['stock_after'] is defined else t[7] %}
                                 {{ sa if sa is not none else '-' }}
                             </td>
                             <td class="p-2.5 border text-slate-600">
