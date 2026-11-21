@@ -123,14 +123,6 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        function quickSearch(term) {
-            const input = document.getElementById('search-input');
-            if (!input) return;
-            input.value = term;
-            switchAppTab('shop');
-            applyAllFilters();
-        }
-
         function toggleWishlist(productKey, btnEl) {
             const idx = wishlist.indexOf(productKey);
             if (idx >= 0) {
@@ -673,7 +665,7 @@
         <div class="flex justify-between items-center w-full md:w-auto">
             <div class="flex items-center gap-2">
                 <a href="/" onclick="switchAppTab('shop'); return false;" class="text-xl md:text-2xl font-black italic tracking-tighter text-amber-500">Swaraj Grocery's</a>
-                <span class="bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-[10px] font-extrabold px-2 py-0.5 rounded-full">⚡ Katol</span>
+                <span class="bg-amber-50 text-amber-700 border border-amber-200/80 text-[10px] font-extrabold px-2 py-0.5 rounded-full">⚡ Katol</span>
             </div>
             <div onclick="toggleCartDrawer()" class="hidden md:flex flex-col border-l pl-4 border-slate-200 cursor-pointer">
                 <span id="header-delivery-city" class="text-xs font-black text-slate-800 uppercase tracking-wide">Home Delivery in Katol</span>
@@ -711,31 +703,13 @@
         <!-- TAB 1: MAIN SHOP VIEW -->
         <section id="tab-view-shop">
             <!-- Hero Banner -->
-            <div class="bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-900 rounded-3xl p-5 md:p-8 text-white shadow-md mb-3 flex justify-between items-center relative overflow-hidden">
+            <div class="bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-900 rounded-3xl p-5 md:p-8 text-white shadow-md mb-5 flex justify-between items-center relative overflow-hidden">
                 <div class="max-w-xl z-10">
-                    <span class="bg-white/15 backdrop-blur-xs text-emerald-50 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider border border-white/20">Fresh Daily Essentials</span>
+                    <span class="bg-amber-400/20 backdrop-blur-xs text-amber-200 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider border border-amber-300/30">⚡ Fresh Daily Essentials</span>
                     <h1 class="text-xl md:text-4xl font-black mt-2 tracking-tight leading-snug">Quality groceries at your doorstep.</h1>
                     <p class="text-xs md:text-sm text-emerald-100/95 mt-1 font-medium">Fast doorstep delivery across Katol • UPI & Cash on Delivery</p>
                 </div>
-                <div class="w-16 h-16 md:w-24 md:h-24 rounded-3xl bg-white/10 border border-white/15 flex items-center justify-center text-4xl md:text-6xl select-none shrink-0 ml-3">🛒</div>
-            </div>
-
-            <!-- Store Promise Strip & Quick Search Chips -->
-            <div class="bg-white border border-slate-200/80 rounded-2xl px-3.5 py-2.5 mb-4 flex flex-wrap items-center justify-between gap-2 text-[11px] shadow-2xs">
-                <div class="flex items-center gap-3 text-slate-600 font-semibold">
-                    <span class="text-emerald-700 font-extrabold">✓ Fresh Stock</span>
-                    <span>•</span>
-                    <span>Doorstep Delivery in Katol</span>
-                    <span class="hidden sm:inline">•</span>
-                    <span class="hidden sm:inline">Instant Tax Invoice</span>
-                </div>
-                <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                    <span class="text-[10px] text-slate-400 font-bold mr-0.5">Popular:</span>
-                    <button type="button" onclick="quickSearch('Atta')" class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-emerald-600 text-slate-700 hover:text-white active:scale-95 text-[10px] font-extrabold transition">Atta</button>
-                    <button type="button" onclick="quickSearch('Sugar')" class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-emerald-600 text-slate-700 hover:text-white active:scale-95 text-[10px] font-extrabold transition">Sugar</button>
-                    <button type="button" onclick="quickSearch('Oil')" class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-emerald-600 text-slate-700 hover:text-white active:scale-95 text-[10px] font-extrabold transition">Oil</button>
-                    <button type="button" onclick="quickSearch('Dal')" class="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-emerald-600 text-slate-700 hover:text-white active:scale-95 text-[10px] font-extrabold transition">Dal</button>
-                </div>
+                <div class="w-16 h-16 md:w-24 md:h-24 rounded-3xl bg-white/10 border border-white/15 flex items-center justify-center text-4xl md:text-6xl select-none shrink-0 ml-3 shadow-inner">🛒</div>
             </div>
 
             <!-- Horizontal Category Pills -->
@@ -753,7 +727,7 @@
 
             <!-- Section Header + Sort Bar -->
             <div class="flex items-center justify-between gap-2 mb-4">
-                <h2 id="products-heading" class="text-base font-extrabold text-slate-800 tracking-tight">Explore Products</h2>
+                <h2 id="products-heading" class="text-base font-black text-slate-800 tracking-tight">Explore Products</h2>
                 <select onchange="sortProducts(this.value)" class="bg-white border border-slate-200 text-slate-700 text-[11px] font-bold px-3 py-1.5 rounded-xl shadow-2xs outline-none focus:border-emerald-500">
                     <option value="default">Sort: Featured</option>
                     <option value="price_asc">Price: Low to High</option>
@@ -768,7 +742,7 @@
                 {% set v0 = group.variants[0] %}
                 {% set pct0 = ((v0.savings / v0.mrp) * 100)|round(0)|int if v0.savings > 0 and v0.mrp > 0 else 0 %}
                 {% set wish_key = (group.name ~ '|' ~ group.category) | e %}
-                <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-2xs hover:shadow-lg hover:border-emerald-300 transition duration-200"
+                <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-2xs hover:shadow-md hover:border-emerald-300/90 transition duration-200"
                      data-index="{{ loop.index0 }}"
                      data-category="{{ group.category }}"
                      data-name="{{ group.name }}"
@@ -776,13 +750,13 @@
                      data-price="{{ '%.2f'|format(v0.price) }}"
                      data-savings="{{ '%.2f'|format(v0.savings) }}">
                     <div>
-                        <div class="h-32 md:h-36 bg-stone-50 rounded-2xl mb-3 overflow-hidden flex items-center justify-center border border-slate-100 p-2.5 relative">
+                        <div class="h-32 md:h-36 bg-gradient-to-b from-stone-50 to-slate-50/80 rounded-2xl mb-3 overflow-hidden flex items-center justify-center border border-slate-100 p-2.5 relative">
                             {% if group.image_url %}
                             <img src="{{ group.image_url }}" alt="{{ group.name }}" class="card-image w-full h-full object-contain transform hover:scale-105 transition duration-300">
                             {% else %}
                             <span class="text-3xl">📦</span>
                             {% endif %}
-                            <span class="card-save-badge {% if v0.savings <= 0 %}hidden{% endif %} absolute top-2 left-2 bg-emerald-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs">
+                            <span class="card-save-badge {% if v0.savings <= 0 %}hidden{% endif %} absolute top-2 left-2 bg-amber-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs">
                                 {% if pct0 > 0 %}{{ pct0 }}% OFF • {% endif %}Save ₹{{ "%.0f"|format(v0.savings) }}
                             </span>
                             <button type="button"
