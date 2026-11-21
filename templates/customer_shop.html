@@ -22,8 +22,10 @@
         const CART_STORAGE_KEY = 'swaraj_grocery_cart_v1';
         const PROFILE_STORAGE_KEY = 'swaraj_grocery_profile_v1';
         const ORDERS_STORAGE_KEY = 'swaraj_grocery_orders_v1';
+        const WISHLIST_STORAGE_KEY = 'swaraj_grocery_wishlist_v1';
 
         let cart = {};
+        let wishlist = [];
         let currentCategory = 'All';
         let deferredInstallPrompt = null;
 
@@ -34,9 +36,22 @@
             cart = {};
         }
 
+        try {
+            const savedWish = localStorage.getItem(WISHLIST_STORAGE_KEY);
+            if (savedWish) wishlist = JSON.parse(savedWish) || [];
+        } catch (e) {
+            wishlist = [];
+        }
+
         function saveCartToStorage() {
             try {
                 localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+            } catch (e) {}
+        }
+
+        function saveWishlistToStorage() {
+            try {
+                localStorage.setItem(WISHLIST_STORAGE_KEY, JSON.stringify(wishlist));
             } catch (e) {}
         }
 
@@ -103,11 +118,54 @@
             applyAllFilters();
         }
 
-        function addToCart(id, name, price, gst) {
+        function toggleWishlist(productKey, btnEl) {
+            const idx = wishlist.indexOf(productKey);
+            if (idx >= 0) {
+                wishlist.splice(idx, 1);
+            } else {
+                wishlist.push(productKey);
+            }
+            saveWishlistToStorage();
+            syncWishlistButtons();
+            if (currentCategory === 'Saved') {
+                applyAllFilters();
+            }
+            if (btnEl) {
+                btnEl.classList.add('scale-110');
+                setTimeout(function () { btnEl.classList.remove('scale-110'); }, 150);
+            }
+        }
+
+        function syncWishlistButtons() {
+            document.querySelectorAll('.wish-btn').forEach(function (btn) {
+                const key = btn.getAttribute('data-wish-key');
+                const saved = wishlist.indexOf(key) >= 0;
+                btn.innerText = saved ? '❤️' : '🤍';
+                btn.classList.toggle('border-rose-200', saved);
+                btn.classList.toggle('bg-rose-50', saved);
+            });
+            const savedCountEl = document.getElementById('saved-count-pill');
+            if (savedCountEl) {
+                savedCountEl.innerText = wishlist.length;
+            }
+        }
+
+        function addToCart(id, name, price, gst, mrp) {
+            const pPrice = parseFloat(price) || 0;
+            const pMrp = parseFloat(mrp) || pPrice;
             if (!cart[id]) {
-                cart[id] = { name: name, price: parseFloat(price) || 0, gst: parseFloat(gst) || 0, qty: 1 };
+                cart[id] = {
+                    name: name,
+                    price: pPrice,
+                    mrp: pMrp,
+                    gst: parseFloat(gst) || 0,
+                    qty: 1
+                };
             } else {
                 cart[id].qty += 1;
+                if (pMrp > (cart[id].mrp || pPrice)) {
+                    cart[id].mrp = pMrp;
+                }
             }
             saveCartToStorage();
             updateUI();
@@ -135,8 +193,9 @@
             const id = container.getAttribute('data-id');
             const name = container.getAttribute('data-name');
             const price = parseFloat(container.getAttribute('data-price'));
+            const mrp = parseFloat(container.getAttribute('data-mrp'));
             const gst = parseFloat(container.getAttribute('data-gst'));
-            addToCart(id, name, price, gst);
+            addToCart(id, name, price, gst, mrp);
         }
 
         function incProdFromEl(btn) {
@@ -144,8 +203,9 @@
             const id = container.getAttribute('data-id');
             const name = container.getAttribute('data-name');
             const price = parseFloat(container.getAttribute('data-price'));
+            const mrp = parseFloat(container.getAttribute('data-mrp'));
             const gst = parseFloat(container.getAttribute('data-gst'));
-            addToCart(id, name, price, gst);
+            addToCart(id, name, price, gst, mrp);
         }
 
         function selectVariant(pillBtn) {
@@ -153,11 +213,11 @@
             if (!card) return;
 
             card.querySelectorAll('.variant-pill').forEach(function (btn) {
-                btn.classList.remove('bg-emerald-600', 'text-white', 'border-emerald-600', 'shadow-xs');
+                btn.classList.remove('bg-emerald-600', 'text-white', 'border-emerald-600', 'shadow-2xs');
                 btn.classList.add('bg-slate-100', 'text-slate-700', 'border-slate-200');
             });
             pillBtn.classList.remove('bg-slate-100', 'text-slate-700', 'border-slate-200');
-            pillBtn.classList.add('bg-emerald-600', 'text-white', 'border-emerald-600', 'shadow-xs');
+            pillBtn.classList.add('bg-emerald-600', 'text-white', 'border-emerald-600', 'shadow-2xs');
 
             const id = pillBtn.getAttribute('data-id');
             const displayName = pillBtn.getAttribute('data-display-name');
@@ -214,6 +274,7 @@
                 actionContainer.setAttribute('data-id', id);
                 actionContainer.setAttribute('data-name', displayName);
                 actionContainer.setAttribute('data-price', price.toFixed(2));
+                actionContainer.setAttribute('data-mrp', mrp.toFixed(2));
                 actionContainer.setAttribute('data-gst', gst);
             }
 
@@ -225,6 +286,45 @@
             const backdrop = document.getElementById('drawer-backdrop');
             drawer.classList.toggle('translate-x-full');
             backdrop.classList.toggle('hidden');
+        }
+
+        function openInfoModal(title, subtitle, bodyHtml) {
+            const modal = document.getElementById('store-info-modal');
+            if (!modal) return;
+            document.getElementById('info-modal-title').innerText = title;
+            document.getElementById('info-modal-subtitle').innerText = subtitle;
+            document.getElementById('info-modal-body').innerHTML = bodyHtml;
+            modal.classList.remove('hidden');
+        }
+
+        function closeInfoModal() {
+            const modal = document.getElementById('store-info-modal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function showDeliveryZonesInfo() {
+            openInfoModal(
+                '📍 Katol Delivery Zones',
+                'Doorstep delivery across Katol & nearby localities',
+                '<ul class="space-y-2 text-xs text-slate-700">' +
+                '<li class="flex justify-between bg-slate-50 p-2.5 rounded-xl"><span>Ambedkar Chowk & Main Market</span><span class="font-bold text-emerald-700">Fast</span></li>' +
+                '<li class="flex justify-between bg-slate-50 p-2.5 rounded-xl"><span>Jaising Lay Out & Civil Lines</span><span class="font-bold text-emerald-700">Fast</span></li>' +
+                '<li class="flex justify-between bg-slate-50 p-2.5 rounded-xl"><span>Bus Stand & Surrounding Wards</span><span class="font-bold text-emerald-700">Same Day</span></li>' +
+                '</ul>' +
+                '<p class="text-[11px] text-slate-500 mt-3">Tip: Add your House Number / Block in the basket so our delivery partner reaches your doorstep smoothly.</p>'
+            );
+        }
+
+        function showStoreHoursInfo() {
+            openInfoModal(
+                '🕒 Store & Delivery Hours',
+                'Swaraj Grocery • Katol (IST)',
+                '<div class="space-y-2 text-xs text-slate-700">' +
+                '<div class="flex justify-between bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200/60"><span class="font-bold">Daily Store Hours</span><span class="font-black text-emerald-800">8:00 AM – 10:00 PM</span></div>' +
+                '<div class="flex justify-between bg-slate-50 p-2.5 rounded-xl"><span>Payment Modes</span><span class="font-bold">Online UPI & Cash on Delivery</span></div>' +
+                '<div class="flex justify-between bg-slate-50 p-2.5 rounded-xl"><span>Billing</span><span class="font-bold">Instant GST Tax Invoice</span></div>' +
+                '</div>'
+            );
         }
 
         function syncHeaderLocation() {
@@ -266,10 +366,20 @@
             const paymentMode = document.getElementById('payment_mode_input')?.value || 'Online UPI';
 
             let totalAmt = 0;
+            let rawItemsList = [];
             let itemSummary = [];
             for (let id in cart) {
-                totalAmt += (parseFloat(cart[id].price) || 0) * (parseInt(cart[id].qty) || 1);
-                itemSummary.push(cart[id].name + ' x' + cart[id].qty);
+                const item = cart[id];
+                totalAmt += (parseFloat(item.price) || 0) * (parseInt(item.qty) || 1);
+                itemSummary.push(item.name + ' x' + item.qty);
+                rawItemsList.push({
+                    id: id,
+                    name: item.name,
+                    price: parseFloat(item.price) || 0,
+                    mrp: parseFloat(item.mrp) || parseFloat(item.price) || 0,
+                    gst: parseFloat(item.gst) || 0,
+                    qty: parseInt(item.qty) || 1
+                });
             }
 
             try {
@@ -285,12 +395,38 @@
                 existingOrders.unshift({
                     date: new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
                     items: itemSummary.join(', '),
+                    rawItems: rawItemsList,
                     total: totalAmt.toFixed(2),
                     payment: paymentMode,
                     address: [houseNo, area, localityTown].filter(Boolean).join(', ')
                 });
                 localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(existingOrders.slice(0, 15)));
                 localStorage.removeItem(CART_STORAGE_KEY);
+            } catch (e) {}
+        }
+
+        function reorderPastOrder(orderIndex) {
+            try {
+                const orders = JSON.parse(localStorage.getItem(ORDERS_STORAGE_KEY) || '[]');
+                const order = orders[orderIndex];
+                if (!order || !Array.isArray(order.rawItems)) return;
+
+                order.rawItems.forEach(function (it) {
+                    if (!cart[it.id]) {
+                        cart[it.id] = {
+                            name: it.name,
+                            price: parseFloat(it.price) || 0,
+                            mrp: parseFloat(it.mrp) || parseFloat(it.price) || 0,
+                            gst: parseFloat(it.gst) || 0,
+                            qty: parseInt(it.qty) || 1
+                        };
+                    } else {
+                        cart[it.id].qty += (parseInt(it.qty) || 1);
+                    }
+                });
+                saveCartToStorage();
+                updateUI();
+                toggleCartDrawer();
             } catch (e) {}
         }
 
@@ -304,26 +440,32 @@
 
             if (!orders.length) {
                 listEl.innerHTML =
-                    '<div class="bg-white rounded-3xl p-8 text-center border border-slate-200/90 shadow-xs">' +
+                    '<div class="bg-white rounded-3xl p-8 text-center border border-slate-200/90 shadow-2xs">' +
                     '<div class="w-14 h-14 mx-auto mb-3 rounded-2xl bg-emerald-50 flex items-center justify-center text-2xl">🛍️</div>' +
                     '<h3 class="text-sm font-black text-slate-800">No recent orders on this device</h3>' +
                     '<p class="text-xs text-slate-500 mt-1">Place your first order from the Shop tab and track it here anytime.</p>' +
-                    '<button type="button" onclick="switchAppTab(\'shop\')" class="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl text-xs font-black shadow-sm transition">Start Shopping →</button>' +
+                    '<button type="button" onclick="switchAppTab(\'shop\')" class="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl text-xs font-black shadow-2xs transition">Start Shopping →</button>' +
                     '</div>';
                 return;
             }
 
             listEl.innerHTML = orders.map(function (o, idx) {
+                const canReorder = Array.isArray(o.rawItems) && o.rawItems.length > 0;
                 return (
-                    '<div class="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-xs space-y-2.5">' +
+                    '<div class="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-2xs space-y-2.5">' +
                     '<div class="flex justify-between items-center gap-2">' +
                     '<span class="text-[10px] font-extrabold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/70 px-2.5 py-1 rounded-full">Order #' + (orders.length - idx) + ' • ' + o.payment + '</span>' +
                     '<span class="text-[11px] font-semibold text-slate-400">' + o.date + '</span>' +
                     '</div>' +
                     '<p class="text-xs font-bold text-slate-800 leading-relaxed">' + o.items + '</p>' +
-                    '<div class="flex justify-between items-center pt-2.5 border-t border-slate-100 text-xs">' +
-                    '<span class="text-slate-500 truncate max-w-[65%]">📍 ' + (o.address || 'Katol') + '</span>' +
+                    '<div class="flex justify-between items-center pt-2.5 border-t border-slate-100 text-xs gap-2">' +
+                    '<div class="min-w-0">' +
+                    '<span class="text-slate-500 truncate block">📍 ' + (o.address || 'Katol') + '</span>' +
                     '<span class="font-black text-emerald-700 text-sm tabular-nums">₹' + o.total + '</span>' +
+                    '</div>' +
+                    (canReorder
+                        ? '<button type="button" onclick="reorderPastOrder(' + idx + ')" class="shrink-0 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 px-3.5 py-2 rounded-2xl text-[11px] font-black transition">🔁 Reorder</button>'
+                        : '') +
                     '</div>' +
                     '</div>'
                 );
@@ -333,6 +475,7 @@
         function updateUI() {
             let subtotal = 0;
             let gstTotal = 0;
+            let savingsTotal = 0;
             let totalCount = 0;
 
             const addButtons = document.querySelectorAll('.product-action-container');
@@ -341,7 +484,7 @@
 
                 if (cart[prodId]) {
                     container.innerHTML =
-                        '<div class="flex items-center justify-between bg-emerald-600 text-white rounded-xl px-1.5 py-1.5 shadow-sm w-full transition-all">' +
+                        '<div class="flex items-center justify-between bg-emerald-600 text-white rounded-xl px-1.5 py-1.5 shadow-2xs w-full transition-all">' +
                         '<button type="button" onclick="decrementCart(\'' + prodId + '\')" class="w-6 h-6 flex items-center justify-center font-black hover:bg-emerald-700 rounded-lg text-sm leading-none">-</button>' +
                         '<span class="font-black text-xs px-1 tabular-nums">' + cart[prodId].qty + '</span>' +
                         '<button type="button" onclick="incProdFromEl(this)" class="w-6 h-6 flex items-center justify-center font-black hover:bg-emerald-700 rounded-lg text-sm leading-none">+</button>' +
@@ -361,12 +504,18 @@
 
             for (let id in cart) {
                 let item = cart[id];
-                let itemTotal = (parseFloat(item.price) || 0) * (parseInt(item.qty) || 1);
+                let unitPrice = parseFloat(item.price) || 0;
+                let unitMrp = parseFloat(item.mrp) || unitPrice;
+                let qtyNum = parseInt(item.qty) || 1;
+                let itemTotal = unitPrice * qtyNum;
+                let itemSavings = unitMrp > unitPrice ? (unitMrp - unitPrice) * qtyNum : 0;
                 let rate = parseFloat(item.gst) || 0;
                 let itemGst = rate > 0 ? (itemTotal * rate) / (100 + rate) : 0;
+
                 subtotal += itemTotal;
                 gstTotal += itemGst;
-                totalCount += item.qty;
+                savingsTotal += itemSavings;
+                totalCount += qtyNum;
 
                 const rowEl = document.createElement('div');
                 rowEl.className = 'flex justify-between items-center bg-slate-50/90 p-3 rounded-2xl border border-slate-200/80 text-xs mb-2 shadow-2xs';
@@ -378,12 +527,12 @@
                 titleSpan.innerText = item.name;
                 const subSpan = document.createElement('span');
                 subSpan.className = 'text-[10px] text-slate-500 font-medium tabular-nums';
-                subSpan.innerText = '₹' + item.price.toFixed(2) + ' × ' + item.qty + ' • ₹' + itemTotal.toFixed(2);
+                subSpan.innerText = '₹' + unitPrice.toFixed(2) + ' × ' + qtyNum + ' • ₹' + itemTotal.toFixed(2);
                 infoDiv.appendChild(titleSpan);
                 infoDiv.appendChild(subSpan);
 
                 const ctrlDiv = document.createElement('div');
-                ctrlDiv.className = 'flex items-center space-x-2 bg-emerald-600 text-white rounded-xl px-2.5 py-1 shadow-xs shrink-0';
+                ctrlDiv.className = 'flex items-center space-x-2 bg-emerald-600 text-white rounded-xl px-2.5 py-1 shadow-2xs shrink-0';
                 const decBtn = document.createElement('button');
                 decBtn.type = 'button';
                 decBtn.className = 'font-bold px-1';
@@ -392,13 +541,13 @@
 
                 const qtySpan = document.createElement('span');
                 qtySpan.className = 'font-bold text-xs tabular-nums';
-                qtySpan.innerText = item.qty;
+                qtySpan.innerText = qtyNum;
 
                 const incBtn = document.createElement('button');
                 incBtn.type = 'button';
                 incBtn.className = 'font-bold px-1';
                 incBtn.innerText = '+';
-                incBtn.onclick = function () { addToCart(id, item.name, item.price, item.gst); };
+                incBtn.onclick = function () { addToCart(id, item.name, unitPrice, rate, unitMrp); };
 
                 ctrlDiv.appendChild(decBtn);
                 ctrlDiv.appendChild(qtySpan);
@@ -419,6 +568,22 @@
             document.getElementById('grand-total-display').innerText = '₹' + grandTotal.toFixed(2);
             document.getElementById('basket-count').innerText = totalCount + ' Items';
             document.getElementById('cart_data_input').value = JSON.stringify(cart);
+
+            const savingsBanner = document.getElementById('basket-savings-banner');
+            const savingsVal = document.getElementById('basket-savings-amount');
+            if (savingsBanner && savingsVal) {
+                if (savingsTotal > 0) {
+                    savingsVal.innerText = '₹' + savingsTotal.toFixed(2);
+                    savingsBanner.classList.remove('hidden');
+                } else {
+                    savingsBanner.classList.add('hidden');
+                }
+            }
+
+            const footerBasketEl = document.getElementById('footer-basket-stat');
+            if (footerBasketEl) {
+                footerBasketEl.innerText = totalCount + (totalCount === 1 ? ' item' : ' items') + ' (₹' + grandTotal.toFixed(0) + ')';
+            }
 
             if (navBadge) {
                 if (totalCount > 0) {
@@ -446,7 +611,7 @@
                 const matches = b.getAttribute('data-cat') === cat;
                 b.classList.toggle('bg-emerald-600', matches);
                 b.classList.toggle('text-white', matches);
-                b.classList.toggle('shadow-sm', matches);
+                b.classList.toggle('shadow-2xs', matches);
                 b.classList.toggle('bg-white', !matches);
                 b.classList.toggle('border-slate-200', !matches);
                 b.classList.toggle('text-slate-700', !matches);
@@ -459,7 +624,10 @@
             filterCategory(cat, null);
             const heading = document.getElementById('products-heading');
             if (heading) {
-                heading.innerText = cat === 'All' ? 'Explore Products' : (cat === 'Deals' ? "🔥 Today's Best Deals" : cat);
+                if (cat === 'All') heading.innerText = 'Explore Products';
+                else if (cat === 'Deals') heading.innerText = "🔥 Today's Best Deals";
+                else if (cat === 'Saved') heading.innerText = '❤️ Saved Essentials';
+                else heading.innerText = cat;
             }
         }
 
@@ -495,12 +663,14 @@
             for (let card of cards) {
                 const name = (card.getAttribute('data-name') || '').toLowerCase();
                 const cat = card.getAttribute('data-category') || '';
+                const wishKey = card.getAttribute('data-wish-key') || '';
                 const savings = parseFloat(card.getAttribute('data-savings') || '0');
 
                 const matchesSearch = !query || name.includes(query) || cat.toLowerCase().includes(query);
                 const matchesCat =
                     currentCategory === 'All' ||
                     (currentCategory === 'Deals' && savings > 0) ||
+                    (currentCategory === 'Saved' && wishlist.indexOf(wishKey) >= 0) ||
                     cat === currentCategory;
 
                 if (matchesSearch && matchesCat) {
@@ -511,15 +681,56 @@
                 }
             }
 
+            const visibleStatEl = document.getElementById('footer-visible-stat');
+            if (visibleStatEl) {
+                visibleStatEl.innerText = visibleCount + ' items shown';
+            }
+
             const emptyState = document.getElementById('empty-search-state');
             if (emptyState) {
                 emptyState.classList.toggle('hidden', visibleCount > 0);
             }
         }
 
+        function updateLiveStoreClock() {
+            const badgeEl = document.getElementById('footer-store-status');
+            const clockEl = document.getElementById('footer-ist-clock');
+            if (!badgeEl && !clockEl) return;
+
+            try {
+                const now = new Date();
+                const istTimeStr = now.toLocaleTimeString('en-IN', {
+                    timeZone: 'Asia/Kolkata',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true
+                });
+                const hourPart = parseInt(now.toLocaleTimeString('en-IN', {
+                    timeZone: 'Asia/Kolkata',
+                    hour: '2-digit',
+                    hour12: false
+                }), 10);
+
+                if (clockEl) clockEl.innerText = istTimeStr + ' IST';
+
+                const isOpen = hourPart >= 8 && hourPart < 22;
+                if (badgeEl) {
+                    badgeEl.innerText = isOpen ? '● Open for Katol Delivery' : '● Opens Daily at 8:00 AM';
+                    badgeEl.className = isOpen
+                        ? 'inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                        : 'inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-400/30';
+                }
+            } catch (e) {}
+        }
+
         window.addEventListener('DOMContentLoaded', function () {
             loadSavedCustomerProfile();
+            syncWishlistButtons();
             updateUI();
+            applyAllFilters();
+            updateLiveStoreClock();
+            setInterval(updateLiveStoreClock, 1000);
         });
     </script>
 </head>
@@ -549,6 +760,7 @@
             </div>
         </div>
         <div class="hidden md:flex items-center space-x-3">
+            <button type="button" onclick="pickCategoryFromGrid('Saved')" class="text-xs font-bold text-slate-600 hover:text-rose-600 transition">❤️ Saved (<span id="saved-count-pill">0</span>)</button>
             <button type="button" onclick="switchAppTab('orders')" class="text-xs font-bold text-slate-600 hover:text-emerald-600 transition">📦 My Orders</button>
             <button type="button" onclick="installStoreApp()" class="install-app-trigger hidden bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300 px-3.5 py-2 rounded-2xl font-extrabold text-xs transition shadow-2xs">
                 📲 Install App
@@ -595,8 +807,9 @@
 
             <!-- Horizontal Category Pills -->
             <div class="flex gap-2 overflow-x-auto pb-3 mb-4 no-scrollbar">
-                <button type="button" data-cat="All" onclick="filterCategory('All', this)" class="cat-btn px-3.5 py-2 bg-emerald-600 text-white rounded-2xl text-xs font-bold whitespace-nowrap shadow-sm transition">🌿 All Items</button>
+                <button type="button" data-cat="All" onclick="filterCategory('All', this)" class="cat-btn px-3.5 py-2 bg-emerald-600 text-white rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs transition">🌿 All Items</button>
                 <button type="button" data-cat="Deals" onclick="filterCategory('Deals', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">🔥 Best Deals</button>
+                <button type="button" data-cat="Saved" onclick="filterCategory('Saved', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">❤️ Saved</button>
                 <button type="button" data-cat="Grains & Flour" onclick="filterCategory('Grains & Flour', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">🌾 Grains & Flour</button>
                 <button type="button" data-cat="Essentials" onclick="filterCategory('Essentials', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">🧂 Essentials</button>
                 <button type="button" data-cat="Oils & Ghee" onclick="filterCategory('Oils & Ghee', this)" class="cat-btn px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-2xl text-xs font-bold whitespace-nowrap shadow-2xs hover:bg-slate-50 transition">🌻 Oils & Ghee</button>
@@ -621,10 +834,12 @@
                 {% for group in grouped_products %}
                 {% set v0 = group.variants[0] %}
                 {% set pct0 = ((v0.savings / v0.mrp) * 100)|round(0)|int if v0.savings > 0 and v0.mrp > 0 else 0 %}
+                {% set wish_key = (group.name ~ '|' ~ group.category) | e %}
                 <div class="product-card bg-white p-3.5 md:p-4 rounded-3xl border border-slate-200/80 flex flex-col justify-between shadow-2xs hover:shadow-lg hover:border-emerald-300 transition duration-200"
                      data-index="{{ loop.index0 }}"
                      data-category="{{ group.category }}"
                      data-name="{{ group.name }}"
+                     data-wish-key="{{ wish_key }}"
                      data-price="{{ '%.2f'|format(v0.price) }}"
                      data-savings="{{ '%.2f'|format(v0.savings) }}">
                     <div>
@@ -637,6 +852,13 @@
                             <span class="card-save-badge {% if v0.savings <= 0 %}hidden{% endif %} absolute top-2 left-2 bg-emerald-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-2xs">
                                 {% if pct0 > 0 %}{{ pct0 }}% OFF • {% endif %}Save ₹{{ "%.0f"|format(v0.savings) }}
                             </span>
+                            <button type="button"
+                                    data-wish-key="{{ wish_key }}"
+                                    onclick="toggleWishlist('{{ wish_key }}', this)"
+                                    title="Save item"
+                                    class="wish-btn absolute top-2 right-2 w-7 h-7 rounded-full bg-white/95 border border-slate-200/90 flex items-center justify-center text-xs shadow-2xs transition active:scale-90">
+                                🤍
+                            </button>
                         </div>
                         <span class="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200/60 px-2 py-0.5 rounded-md font-extrabold uppercase tracking-wider">{{ group.category }}</span>
                         <h3 class="font-bold text-xs text-slate-900 mt-1.5 line-clamp-2 leading-snug">{{ group.name }}</h3>
@@ -681,6 +903,7 @@
                              data-id="{{ v0.id }}"
                              data-name="{{ v0.display_name | e }}"
                              data-price="{{ '%.2f'|format(v0.price) }}"
+                             data-mrp="{{ '%.2f'|format(v0.mrp) }}"
                              data-gst="{{ v0.gst }}">
                             <button type="button" onclick="addProdFromEl(this)" class="w-full bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white border border-emerald-300/90 py-2 rounded-2xl text-xs font-black transition shadow-2xs tracking-wide">
                                 ADD
@@ -694,7 +917,7 @@
             <!-- Empty Search Fallback -->
             <div id="empty-search-state" class="hidden bg-white rounded-3xl p-8 text-center border border-slate-200 mt-4">
                 <div class="text-3xl mb-2">🔍</div>
-                <p class="text-xs font-bold text-slate-700">No matching products found.</p>
+                <p class="text-xs font-bold text-slate-700">No items match your current filter.</p>
                 <button type="button" onclick="document.getElementById('search-input').value=''; pickCategoryFromGrid('All');" class="mt-3 bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-extrabold">Show All Items</button>
             </div>
         </section>
@@ -715,6 +938,11 @@
                     <span class="w-11 h-11 rounded-2xl bg-amber-100 flex items-center justify-center text-2xl mb-3">🔥</span>
                     <span class="text-xs font-black text-amber-950 block">Best Deals</span>
                     <span class="text-[10px] text-amber-700">Discounted MRP items</span>
+                </button>
+                <button type="button" onclick="pickCategoryFromGrid('Saved')" class="bg-rose-50/60 p-5 rounded-3xl border border-rose-200/80 shadow-2xs hover:border-rose-400 text-left transition">
+                    <span class="w-11 h-11 rounded-2xl bg-rose-100 flex items-center justify-center text-2xl mb-3">❤️</span>
+                    <span class="text-xs font-black text-rose-950 block">Saved Items</span>
+                    <span class="text-[10px] text-rose-700">Your favorite groceries</span>
                 </button>
                 <button type="button" onclick="pickCategoryFromGrid('Grains & Flour')" class="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-2xs hover:border-emerald-400 text-left transition">
                     <span class="w-11 h-11 rounded-2xl bg-stone-100 flex items-center justify-center text-2xl mb-3">🌾</span>
@@ -761,11 +989,79 @@
             <div id="order-history-list" class="space-y-3"></div>
         </section>
 
-        <footer class="mt-10 pt-4 border-t border-slate-200/80 flex flex-wrap justify-between items-center gap-2 text-[11px] text-slate-500">
-            <span>Swaraj Grocery • Katol</span>
-            <a href="/privacy" class="font-bold text-emerald-700 hover:underline">Privacy Policy</a>
+        <!-- Dynamic Store Footer -->
+        <footer class="mt-10 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 text-slate-300 p-5 md:p-7 shadow-lg border border-slate-800">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-5 border-b border-slate-800">
+                <div>
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <span class="text-lg font-black italic tracking-tight text-amber-400">Swaraj Grocery's</span>
+                        <span id="footer-store-status" class="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                            ● Katol Storefront
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">Fresh daily groceries, honest pricing, and doorstep delivery across Katol.</p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 text-[11px]">
+                    <span id="footer-ist-clock" class="bg-slate-800/90 border border-slate-700 text-emerald-300 font-mono font-bold px-3 py-1.5 rounded-xl">--:--:-- IST</span>
+                    <span id="footer-visible-stat" class="bg-slate-800/90 border border-slate-700 text-slate-200 font-bold px-3 py-1.5 rounded-xl">{{ grouped_products|length }} items shown</span>
+                    <span id="footer-basket-stat" class="bg-emerald-900/60 border border-emerald-700/60 text-emerald-200 font-bold px-3 py-1.5 rounded-xl">0 items (₹0)</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 py-5 text-xs">
+                <div class="space-y-2">
+                    <h4 class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Explore</h4>
+                    <button type="button" onclick="pickCategoryFromGrid('All')" class="block text-left text-slate-200 hover:text-emerald-300 font-semibold transition">All Groceries</button>
+                    <button type="button" onclick="pickCategoryFromGrid('Deals')" class="block text-left text-slate-200 hover:text-emerald-300 font-semibold transition">🔥 Today's Deals</button>
+                    <button type="button" onclick="pickCategoryFromGrid('Saved')" class="block text-left text-slate-200 hover:text-emerald-300 font-semibold transition">❤️ Saved Items</button>
+                </div>
+
+                <div class="space-y-2">
+                    <h4 class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Your Account</h4>
+                    <button type="button" onclick="toggleCartDrawer()" class="block text-left text-slate-200 hover:text-emerald-300 font-semibold transition">🛒 Open Basket</button>
+                    <button type="button" onclick="switchAppTab('orders')" class="block text-left text-slate-200 hover:text-emerald-300 font-semibold transition">📦 Recent Orders</button>
+                    <button type="button" onclick="switchAppTab('categories')" class="block text-left text-slate-200 hover:text-emerald-300 font-semibold transition">🗂️ Category Grid</button>
+                </div>
+
+                <div class="space-y-2">
+                    <h4 class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Katol Service</h4>
+                    <button type="button" onclick="showDeliveryZonesInfo()" class="block text-left text-slate-200 hover:text-emerald-300 font-semibold transition">📍 Delivery Areas</button>
+                    <button type="button" onclick="showStoreHoursInfo()" class="block text-left text-slate-200 hover:text-emerald-300 font-semibold transition">🕒 Store Timings</button>
+                    <a href="/privacy" class="block text-slate-200 hover:text-emerald-300 font-semibold transition">🔒 Privacy Policy</a>
+                </div>
+
+                <div class="space-y-2 flex flex-col justify-between items-start sm:items-end">
+                    <div class="sm:text-right">
+                        <h4 class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Payments</h4>
+                        <p class="text-[11px] text-slate-300 font-semibold mt-1">📱 Online UPI • 💵 Cash on Delivery</p>
+                    </div>
+                    <button type="button" onclick="window.scrollTo({ top: 0, behavior: 'smooth' })" class="mt-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-[11px] px-3.5 py-2 rounded-xl shadow-xs transition">
+                        ↑ Back to Top
+                    </button>
+                </div>
+            </div>
+
+            <div class="pt-3 border-t border-slate-800/90 flex flex-wrap justify-between items-center gap-2 text-[11px] text-slate-400">
+                <span>© Swaraj Grocery • Serving Katol with fresh essentials</span>
+                <span class="text-slate-500">GST Tax Invoices Included</span>
+            </div>
         </footer>
     </main>
+
+    <!-- Info Modal for Delivery Zones & Store Hours -->
+    <div id="store-info-modal" onclick="if(event.target===this) closeInfoModal()" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-2xs z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-3xl p-5 shadow-2xl border border-slate-200 space-y-3">
+            <div class="flex justify-between items-start border-b border-slate-100 pb-3">
+                <div>
+                    <h3 id="info-modal-title" class="text-base font-black text-slate-900">Store Info</h3>
+                    <p id="info-modal-subtitle" class="text-[11px] text-slate-500"></p>
+                </div>
+                <button type="button" onclick="closeInfoModal()" class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold flex items-center justify-center">✕</button>
+            </div>
+            <div id="info-modal-body"></div>
+        </div>
+    </div>
 
     <!-- Slide-Over Cart Drawer -->
     <div id="drawer-backdrop" onclick="toggleCartDrawer()" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-2xs z-50 transition-opacity"></div>
@@ -777,6 +1073,10 @@
                     <button type="button" onclick="clearCart()" class="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg hover:bg-rose-100">Clear</button>
                 </div>
                 <button type="button" onclick="toggleCartDrawer()" class="text-slate-400 hover:text-slate-700 font-bold text-lg bg-slate-100 hover:bg-slate-200 w-8 h-8 rounded-full flex items-center justify-center transition">✕</button>
+            </div>
+            <div id="basket-savings-banner" class="hidden mb-3 bg-emerald-50 border border-emerald-200/80 text-emerald-800 rounded-2xl px-3.5 py-2 text-xs font-extrabold flex justify-between items-center">
+                <span>🎉 Total MRP Savings in Basket</span>
+                <span id="basket-savings-amount" class="tabular-nums">₹0.00</span>
             </div>
             <div id="cart-items" class="overflow-y-auto max-h-[28vh] space-y-2 pr-1">
                 <p class="text-slate-400 text-center text-xs py-6 font-medium">Your basket is empty.</p>
@@ -847,13 +1147,13 @@
     <!-- Floating Cart Pill -->
     <div id="floating-cart-bar" class="translate-y-36 opacity-0 pointer-events-none fixed bottom-20 md:bottom-6 left-4 right-4 md:left-auto md:right-8 md:w-96 bg-zinc-900/95 backdrop-blur-md text-white p-3.5 shadow-2xl z-40 flex justify-between items-center rounded-3xl border border-zinc-700 transition-all duration-300 ease-in-out">
         <div class="flex items-center space-x-3">
-            <div class="w-10 h-10 bg-emerald-600 rounded-2xl flex items-center justify-center font-black shadow-xs">🛒</div>
+            <div class="w-10 h-10 bg-emerald-600 rounded-2xl flex items-center justify-center font-black shadow-2xs">🛒</div>
             <div>
                 <span id="floating-item-count" class="text-xs font-bold text-emerald-400 block leading-none">0 items</span>
                 <span id="floating-total-amt" class="text-sm font-black tracking-wide mt-0.5 block tabular-nums">₹0.00</span>
             </div>
         </div>
-        <button type="button" onclick="toggleCartDrawer()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl font-black text-xs shadow-xs transition transform active:scale-95 tracking-wide">
+        <button type="button" onclick="toggleCartDrawer()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl font-black text-xs shadow-2xs transition transform active:scale-95 tracking-wide">
             View Cart →
         </button>
     </div>
